@@ -6,7 +6,7 @@
     <title>MOC Milliy Sertifikat — Onlayn Tayyorlov Platformasi | Ustoz Islom</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Fonts: Inter & Cinzel (Sertifikat sarlavhasi uchun) -->
+    <!-- Google Fonts: Inter & Cinzel -->
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- KaTeX (Matematik formulalar uchun) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
@@ -37,7 +37,7 @@
     <!-- Maxsus Bildirishnoma (Toast) Tizimi -->
     <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
 
-    <!-- Tasdiqlash Modali (alert/confirm o'rniga) -->
+    <!-- Tasdiqlash Modali -->
     <div id="confirm-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
         <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 fade-in">
             <div class="flex items-center gap-3 text-amber-600 mb-3">
@@ -52,6 +52,12 @@
                 <button id="confirm-ok" class="px-4 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition shadow-sm">Tasdiqlash</button>
             </div>
         </div>
+    </div>
+
+    <!-- Rasmni kattalashtirib ko'rish modali -->
+    <div id="image-zoom-modal" onclick="this.classList.add('hidden'); this.classList.remove('flex');"
+         class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 hidden items-center justify-center p-4 cursor-zoom-out">
+        <img id="zoomed-img" src="" alt="Kattalashtirilgan chizma" class="max-w-full max-h-[90vh] rounded-2xl bg-white p-2 shadow-2xl">
     </div>
 
     <!-- Yuqori Navigatsiya Paneli -->
@@ -84,7 +90,6 @@
 
     <!-- Asosiy Kontent Qismi -->
     <main id="main-content" class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        <!-- Dinamik sahifalar shu yerga yuklanadi -->
     </main>
 
     <!-- Footer -->
@@ -98,7 +103,6 @@
         </div>
     </footer>
 
-    <!-- JAVASCRIPT LOGIKASI -->
     <script>
         /**
          * ============================================================================
@@ -106,38 +110,34 @@
          * ============================================================================
          */
         const STORAGE_KEYS = {
-            CONFIG: 'moc_islom_config_v2',
-            QUESTIONS_CACHE: 'moc_islom_questions_cache_v2',
-            SUBMISSIONS: 'moc_islom_submissions_v2',
-            ACTIVE_SESSION: 'moc_islom_active_session_v2'
+            CONFIG: 'moc_islom_config_v3',
+            QUESTIONS_CACHE: 'moc_islom_questions_cache_v3',
+            SUBMISSIONS: 'moc_islom_submissions_v3',
+            ACTIVE_SESSION: 'moc_islom_active_session_v3'
         };
 
         const DEFAULT_CONFIG = {
             examTitle: "Matematika fanidan Milliy Sertifikat (MOC) sinov imtihoni",
             durationMinutes: 150,
             teacherPin: "1234",
-            googleSheetCsvUrl: "", // Google Sheets -> File -> Share -> Publish to web -> CSV
+            googleSheetCsvUrl: "",
             telegramBotToken: "",
             telegramChatId: ""
         };
 
-        /**
-         * Sayt ilk bor ochilganda ham darhol ishlashi uchun 45 ta sifatli matematika savoli
-         * (1–35: 4 variantli yopiq; 36–45: a va b shartli ochiq yozma)
-         */
         function getFallbackQuestions() {
             const list = [];
             const closedBank = [
-                { t: "Hisoblang: $\\frac{3}{4} + \\frac{5}{6} - \\frac{7}{12}$", o: { A: "$1$", B: "$\\frac{5}{6}$", C: "$\\frac{11}{12}$", D: "$1\\frac{1}{6}$" }, c: "A" },
-                { t: "Tenglamani yeching: $4(x - 3) = 2x + 6$", o: { A: "$6$", B: "$9$", C: "$3$", D: "$12$" }, c: "B" },
-                { t: "$35\\%$ i $70$ ga teng bo'lgan sonning $60\\%$ ini toping.", o: { A: "$100$", B: "$140$", C: "$120$", D: "$150$" }, c: "C" },
-                { t: "To'g'ri burchakli uchburchakning katetlari $6\\text{ sm}$ va $8\\text{ sm}$ bo'lsa, gipotenuzasini toping.", o: { A: "$14\\text{ sm}$", B: "$12\\text{ sm}$", C: "$10\\text{ sm}$", D: "$48\\text{ sm}$" }, c: "C" },
-                { t: "Ifodani soddalashtiring: $(2a - 3)^2 - 4a^2 + 12a$", o: { A: "$-9$", B: "$9$", C: "$6$", D: "$9 - 24a$" }, c: "B" },
-                { t: "Arifmetik progressiyada $a_1 = 5$ va $d = 4$ bo'lsa, dastlabki $10$ ta hadining yig'indisini ($S_{10}$) toping.", o: { A: "$230$", B: "$210$", C: "$250$", D: "$190$" }, c: "A" },
-                { t: "$x^2 - 9x + 14 = 0$ kvadrat tenglama ildizlari ko'paytmasini toping.", o: { A: "$9$", B: "$-14$", C: "$14$", D: "$-9$" }, c: "C" },
-                { t: "Hisoblang: $\\log_3 81 + \\log_2 16 - \\log_5 25$", o: { A: "$5$", B: "$6$", C: "$7$", D: "$8$" }, c: "B" },
-                { t: "Aylana radiusi $R = 7\\text{ sm}$ bo'lsa, uning uzunligini toping ($\\pi \\approx \\frac{22}{7}$).", o: { A: "$22\\text{ sm}$", B: "$154\\text{ sm}$", C: "$44\\text{ sm}$", D: "$14\\text{ sm}$" }, c: "C" },
-                { t: "$f(x) = 2x^3 - 5x^2 + 7x - 1$ funksiyaning $x_0 = 1$ nuqtadagi hosilasini toping.", o: { A: "$3$", B: "$4$", C: "$2$", D: "$5$" }, c: "A" }
+                { t: "Hisoblang: $\\frac{3}{4} + \\frac{5}{6} - \\frac{7}{12}$", o: { A: "$1$", B: "$\\frac{5}{6}$", C: "$\\frac{11}{12}$", D: "$1\\frac{1}{6}$" }, c: "A", img: "" },
+                { t: "Tenglamani yeching: $4(x - 3) = 2x + 6$", o: { A: "$6$", B: "$9$", C: "$3$", D: "$12$" }, c: "B", img: "" },
+                { t: "$35\\%$ i $70$ ga teng bo'lgan sonning $60\\%$ ini toping.", o: { A: "$100$", B: "$140$", C: "$120$", D: "$150$" }, c: "C", img: "" },
+                { t: "To'g'ri burchakli uchburchakning katetlari $6\\text{ sm}$ va $8\\text{ sm}$ bo'lsa, gipotenuzasini toping.", o: { A: "$14\\text{ sm}$", B: "$12\\text{ sm}$", C: "$10\\text{ sm}$", D: "$48\\text{ sm}$" }, c: "C", img: "" },
+                { t: "Ifodani soddalashtiring: $(2a - 3)^2 - 4a^2 + 12a$", o: { A: "$-9$", B: "$9$", C: "$6$", D: "$9 - 24a$" }, c: "B", img: "" },
+                { t: "Arifmetik progressiyada $a_1 = 5$ va $d = 4$ bo'lsa, dastlabki $10$ ta hadining yig'indisini ($S_{10}$) toping.", o: { A: "$230$", B: "$210$", C: "$250$", D: "$190$" }, c: "A", img: "" },
+                { t: "$x^2 - 9x + 14 = 0$ kvadrat tenglama ildizlari ko'paytmasini toping.", o: { A: "$9$", B: "$-14$", C: "$14$", D: "$-9$" }, c: "C", img: "" },
+                { t: "Hisoblang: $\\log_3 81 + \\log_2 16 - \\log_5 25$", o: { A: "$5$", B: "$6$", C: "$7$", D: "$8$" }, c: "B", img: "" },
+                { t: "Aylana radiusi $R = 7\\text{ sm}$ bo'lsa, uning uzunligini toping ($\\pi \\approx \\frac{22}{7}$).", o: { A: "$22\\text{ sm}$", B: "$154\\text{ sm}$", C: "$44\\text{ sm}$", D: "$14\\text{ sm}$" }, c: "C", img: "" },
+                { t: "$f(x) = 2x^3 - 5x^2 + 7x - 1$ funksiyaning $x_0 = 1$ nuqtadagi hosilasini toping.", o: { A: "$3$", B: "$4$", C: "$2$", D: "$5$" }, c: "A", img: "" }
             ];
 
             for (let i = 1; i <= 35; i++) {
@@ -147,6 +147,7 @@
                     id: i,
                     type: 'closed',
                     text: i <= 10 ? item.t : `(${block}-bosqich) Quyidagi topshiriqni bajaring: ${item.t}`,
+                    imageUrl: item.img || '',
                     options: { ...item.o },
                     correctA: item.c,
                     correctB: '',
@@ -189,6 +190,7 @@
                     id: i,
                     type: 'open',
                     text: `[${i}-topshiriq] ${ob.text}`,
+                    imageUrl: '',
                     options: { A: '', B: '', C: '', D: '' },
                     partAPrompt: ob.pA,
                     correctA: ob.aA,
@@ -204,13 +206,35 @@
 
         /**
          * ============================================================================
-         * 2. GOOGLE SHEETS CSV PARSER VA YUKLOVCHI
+         * 2. GOOGLE SHEETS CSV PARSER VA YUKLOVCHI (CHIZMALARNI QO'LLAB-QUVVATLAYDI)
          * ============================================================================
          */
         class GoogleSheetsLoader {
-            /**
-             * RFC-4180 standartiga mos CSV qatorlarini ajratuvchi parser (qo'shtirnoq va vergullarni to'g'ri o'qiydi)
-             */
+            // Google Sheets'da ikkilanib qolgan \\frac kabi belgilarni tozalash
+            static cleanLatex(str) {
+                if (!str) return '';
+                return String(str).replace(/\\\\([a-zA-Z]+)/g, '\\$1');
+            }
+
+            // Google Drive yoki oddiy rasm havolasini to'g'ridan-to'g'ri rasm ko'rsatuvchi URL ga o'tkazish
+            static normalizeImageUrl(url) {
+                if (!url) return '';
+                const clean = String(url).trim();
+                if (!clean) return '';
+
+                // Google Drive linkini (drive.google.com/file/d/ID/view) to'g'ridan-to'g'ri rasmga aylantirish
+                const gdriveMatch = clean.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+                if (gdriveMatch && gdriveMatch[1]) {
+                    return `https://lh3.googleusercontent.com/d/${gdriveMatch[1]}`;
+                }
+                const gdriveOpenMatch = clean.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/);
+                if (gdriveOpenMatch && gdriveOpenMatch[1]) {
+                    return `https://lh3.googleusercontent.com/d/${gdriveOpenMatch[1]}`;
+                }
+
+                return clean;
+            }
+
             static parseCSV(csvText) {
                 const rows = [];
                 let currentRow = [];
@@ -248,26 +272,11 @@
                 return rows;
             }
 
-            /**
-             * Google Sheets CSV URL dan savollar va imtihon vaqtini o'qish
-             * Ustunlar:
-             * 0: Savol_raqami (1..45)
-             * 1: Turi ('yopiq' yoki 'yozma')
-             * 2: Savol_matni
-             * 3: A_variant (yopiqda A varianti, yozmada a) shart matni)
-             * 4: B_variant (yopiqda B varianti, yozmada b) shart matni)
-             * 5: C_variant
-             * 6: D_variant
-             * 7: Togri_javob_A (yopiqda A/B/C/D, yozmada a) javobi)
-             * 8: Togri_javob_B (yozmada b) javobi)
-             * 9: Vaqt_daqiqa (ixtiyoriy, 1-qatorda ko'rsatilsa imtihon vaqtini belgilaydi)
-             */
             static async fetchFromUrl(csvUrl) {
                 if (!csvUrl || !csvUrl.startsWith('http')) {
                     throw new Error("Google Sheets CSV havolasi kiritilmagan.");
                 }
 
-                // Keshlanib qolmasligi uchun timestamp qo'shamiz
                 const separator = csvUrl.includes('?') ? '&' : '?';
                 const response = await fetch(`${csvUrl}${separator}_t=${Date.now()}`);
                 if (!response.ok) {
@@ -276,7 +285,7 @@
 
                 const text = await response.text();
                 const rows = this.parseCSV(text);
-                if (rows.length < 2) {
+                if (rows.length < 1) {
                     throw new Error("Jadval bo'sh yoki noto'g'ri formatda.");
                 }
 
@@ -284,8 +293,11 @@
                 let customDuration = null;
                 let customTitle = null;
 
-                // 1-qator sarlavha (header), 2-qatordan ma'lumotlar boshlanadi
-                for (let r = 1; r < rows.length; r++) {
+                // 1-qator sarlavha bo'lsa tashlab ketamiz, agar darhol 1-savol yozilgan bo'lsa uni ham o'qiymiz!
+                const firstCellNum = parseInt(rows[0][0], 10);
+                const startRow = (!isNaN(firstCellNum) && firstCellNum >= 1) ? 0 : 1;
+
+                for (let r = startRow; r < rows.length; r++) {
                     const cols = rows[r];
                     const qNum = parseInt(cols[0], 10);
                     if (isNaN(qNum) || qNum < 1 || qNum > 45) continue;
@@ -300,16 +312,20 @@
                         customTitle = cols[10].trim();
                     }
 
+                    // L ustuni (index 11) - Chizma / Rasm havolasi
+                    const imageUrl = this.normalizeImageUrl(cols[11] || '');
+
                     if (!isOpen) {
                         questions.push({
                             id: qNum,
                             type: 'closed',
-                            text: cols[2] || `${qNum}-savol`,
+                            text: this.cleanLatex(cols[2] || `${qNum}-savol`),
+                            imageUrl: imageUrl,
                             options: {
-                                A: cols[3] || 'A',
-                                B: cols[4] || 'B',
-                                C: cols[5] || 'C',
-                                D: cols[6] || 'D'
+                                A: this.cleanLatex(cols[3] || 'A'),
+                                B: this.cleanLatex(cols[4] || 'B'),
+                                C: this.cleanLatex(cols[5] || 'C'),
+                                D: this.cleanLatex(cols[6] || 'D')
                             },
                             correctA: (cols[7] || 'A').toUpperCase().trim(),
                             correctB: '',
@@ -320,10 +336,11 @@
                         questions.push({
                             id: qNum,
                             type: 'open',
-                            text: cols[2] || `${qNum}-yozma topshiriq`,
+                            text: this.cleanLatex(cols[2] || `${qNum}-yozma topshiriq`),
+                            imageUrl: imageUrl,
                             options: { A: '', B: '', C: '', D: '' },
-                            partAPrompt: cols[3] || 'a) shart javobini kiriting:',
-                            partBPrompt: cols[4] || 'b) shart javobini kiriting:',
+                            partAPrompt: this.cleanLatex(cols[3] || 'a) shart javobini kiriting:'),
+                            partBPrompt: this.cleanLatex(cols[4] || 'b) shart javobini kiriting:'),
                             correctA: (cols[7] || '').trim(),
                             correctB: (cols[8] || '').trim(),
                             baseDifficultyA: Number((0.5 + idx * 0.14).toFixed(2)),
@@ -340,9 +357,6 @@
                 return { questions, customDuration, customTitle };
             }
 
-            /**
-             * O'qituvchi yuklab olishi uchun tayyor namuna CSV faylini generatsiya qilish
-             */
             static generateSampleCSV() {
                 const headers = [
                     "Savol_raqami",
@@ -355,7 +369,8 @@
                     "Togri_javob_A",
                     "Togri_javob_B",
                     "Vaqt_daqiqa",
-                    "Imtihon_nomi"
+                    "Imtihon_nomi",
+                    "Rasm_havolasi"
                 ];
                 const fallback = getFallbackQuestions();
                 const lines = [headers.join(',')];
@@ -375,7 +390,8 @@
                             esc(q.correctA),
                             "",
                             i === 0 ? "150" : "",
-                            i === 0 ? esc("Matematika fanidan Milliy Sertifikat (MOC) sinov imtihoni") : ""
+                            i === 0 ? esc("Matematika fanidan Milliy Sertifikat (MOC) sinov imtihoni") : "",
+                            esc(q.imageUrl || "")
                         ].join(','));
                     } else {
                         lines.push([
@@ -389,18 +405,19 @@
                             esc(q.correctA),
                             esc(q.correctB),
                             "",
-                            ""
+                            "",
+                            esc(q.imageUrl || "")
                         ].join(','));
                     }
                 });
 
-                return "\uFEFF" + lines.join('\n'); // Excel UTF-8 BOM bilan
+                return "\uFEFF" + lines.join('\n');
             }
         }
 
         /**
          * ============================================================================
-         * 3. RASCH (RASH) MODELI PSIXOMETRIK BAHOLASH ALGORITMI (55 TA BIRLIK)
+         * 3. RASCH (RASH) MODELI PSIXOMETRIK BAHOLASH ALGORITMI
          * ============================================================================
          */
         class RaschEngine {
@@ -434,7 +451,6 @@
                             beta: q.baseDifficulty ?? 0
                         });
                     } else {
-                        // a) shart
                         const ansA = ans && ans.a ? ans.a : "";
                         const isCorrectA = (this.normalizeAnswer(ansA) !== "" &&
                             this.normalizeAnswer(ansA) === this.normalizeAnswer(q.correctA)) ? 1 : 0;
@@ -449,7 +465,6 @@
                             beta: q.baseDifficultyA ?? 1.0
                         });
 
-                        // b) shart
                         const ansB = ans && ans.b ? ans.b : "";
                         const isCorrectB = (this.normalizeAnswer(ansB) !== "" &&
                             this.normalizeAnswer(ansB) === this.normalizeAnswer(q.correctB)) ? 1 : 0;
@@ -469,15 +484,11 @@
                 return { vector, itemDetails, closedCorrect, openCorrect };
             }
 
-            /**
-             * Nyuton-Rafson MLE usuli bilan o'quvchi qobiliyati theta [-4, +4] ni topish
-             */
             static estimateTheta(responseVector, betas) {
                 const rawScore = responseVector.reduce((a, b) => a + b, 0);
                 const M = betas.length;
                 if (M === 0) return 0;
 
-                // Chegaraviy holatlar (0 yoki M) uchun PROX tuzatishi
                 const targetScore = Math.max(0.3, Math.min(M - 0.3, rawScore));
                 let theta = Math.log(targetScore / (M - targetScore));
 
@@ -503,9 +514,8 @@
                 const betas = itemDetails.map(d => d.beta);
                 const theta = this.estimateTheta(vector, betas);
                 const rawScore = vector.reduce((a, b) => a + b, 0);
-                const maxRawScore = vector.length; // 55
+                const maxRawScore = vector.length;
 
-                // T-ball (T = 50 + 10*theta) va 100 ballik Milliy Sertifikat shkalasi
                 const tScore = Number((50 + 10 * theta).toFixed(2));
                 const raschScore = Number(Math.max(0, Math.min(100, 55 + theta * 12.5)).toFixed(2));
                 const grade = this.getCertificateGrade(raschScore);
@@ -525,13 +535,14 @@
             }
 
             static getCertificateGrade(score) {
-                if (score >= 70.0) return { eligible: true, level: "A+", color: "emerald", desc: "Eng yuqori daraja (Imtiyozli)" };
-                if (score >= 65.0) return { eligible: true, level: "A", color: "teal", desc: "Yuqori daraja (Imtiyozli)" };
-                if (score >= 60.0) return { eligible: true, level: "B+", color: "blue", desc: "Yaxshi daraja" };
-                if (score >= 55.0) return { eligible: true, level: "B", color: "indigo", desc: "Qoniqarli yuqori daraja" };
-                if (score >= 50.0) return { eligible: true, level: "C+", color: "amber", desc: "O'rta daraja" };
-                if (score >= 46.0) return { eligible: true, level: "C", color: "orange", desc: "Minimal o'tish darajasi" };
-                return { eligible: false, level: "Sertifikat berilmadi", color: "rose", desc: "Sertifikat darajasiga yetmadi (Qayta urinib ko'ring)" };
+                if (score >= 70.0) return { eligible: true, isParticipation: false, level: "A+", color: "emerald", desc: "Eng yuqori daraja (Imtiyozli)" };
+                if (score >= 65.0) return { eligible: true, isParticipation: false, level: "A", color: "teal", desc: "Yuqori daraja (Imtiyozli)" };
+                if (score >= 60.0) return { eligible: true, isParticipation: false, level: "B+", color: "blue", desc: "Yaxshi daraja" };
+                if (score >= 55.0) return { eligible: true, isParticipation: false, level: "B", color: "indigo", desc: "Qoniqarli yuqori daraja" };
+                if (score >= 50.0) return { eligible: true, isParticipation: false, level: "C+", color: "amber", desc: "O'rta daraja" };
+                if (score >= 46.0) return { eligible: true, isParticipation: false, level: "C", color: "orange", desc: "Minimal o'tish darajasi" };
+                // 46 balldan past bo'lganda ham o'quvchi ranjimasligi uchun "ISHTIROKCHI" sertifikati beriladi
+                return { eligible: true, isParticipation: true, level: "ISHTIROKCHI", color: "slate", desc: "Sinov imtihonida faol ishtirok etdi" };
             }
         }
 
@@ -548,77 +559,65 @@
                 canvas.width = W;
                 canvas.height = H;
 
-                // 1. Asosiy fon (Oq va och qaymoqrang gradient)
+                const isPart = result.grade.isParticipation;
+                const primaryColor = isPart ? '#1e3a8a' : '#0f294a';
+                const accentColor = isPart ? '#3b82f6' : '#d4af37';
+
+                // 1. Asosiy fon
                 const bgGrad = ctx.createLinearGradient(0, 0, W, H);
                 bgGrad.addColorStop(0, '#ffffff');
-                bgGrad.addColorStop(0.5, '#fcfaf2');
-                bgGrad.addColorStop(1, '#f4efe1');
+                bgGrad.addColorStop(0.5, isPart ? '#f8fafc' : '#fcfaf2');
+                bgGrad.addColorStop(1, isPart ? '#eff6ff' : '#f4efe1');
                 ctx.fillStyle = bgGrad;
                 ctx.fillRect(0, 0, W, H);
 
-                // 2. Dekorativ burchak naqshlari (To'q ko'k va Oltin)
-                ctx.fillStyle = '#0f294a';
+                // 2. Burchak naqshlari
+                ctx.fillStyle = primaryColor;
                 ctx.beginPath();
-                ctx.moveTo(0, 0);
-                ctx.lineTo(340, 0);
-                ctx.lineTo(0, 340);
-                ctx.closePath();
-                ctx.fill();
+                ctx.moveTo(0, 0); ctx.lineTo(340, 0); ctx.lineTo(0, 340);
+                ctx.closePath(); ctx.fill();
 
                 ctx.beginPath();
-                ctx.moveTo(W, H);
-                ctx.lineTo(W - 340, H);
-                ctx.lineTo(W, H - 340);
-                ctx.closePath();
-                ctx.fill();
+                ctx.moveTo(W, H); ctx.lineTo(W - 340, H); ctx.lineTo(W, H - 340);
+                ctx.closePath(); ctx.fill();
 
-                // Oltin uchburchak chiziqlar
-                ctx.fillStyle = '#d4af37';
+                ctx.fillStyle = accentColor;
                 ctx.beginPath();
-                ctx.moveTo(340, 0);
-                ctx.lineTo(375, 0);
-                ctx.lineTo(0, 375);
-                ctx.lineTo(0, 340);
-                ctx.closePath();
-                ctx.fill();
+                ctx.moveTo(340, 0); ctx.lineTo(375, 0); ctx.lineTo(0, 375); ctx.lineTo(0, 340);
+                ctx.closePath(); ctx.fill();
 
                 ctx.beginPath();
-                ctx.moveTo(W - 340, H);
-                ctx.lineTo(W - 375, H);
-                ctx.lineTo(W, H - 375);
-                ctx.lineTo(W, H - 340);
-                ctx.closePath();
-                ctx.fill();
+                ctx.moveTo(W - 340, H); ctx.lineTo(W - 375, H); ctx.lineTo(W, H - 375); ctx.lineTo(W, H - 340);
+                ctx.closePath(); ctx.fill();
 
-                // 3. Tashqi va ichki ramkalar
-                ctx.strokeStyle = '#0f294a';
+                // 3. Ramkalar
+                ctx.strokeStyle = primaryColor;
                 ctx.lineWidth = 8;
                 ctx.strokeRect(42, 42, W - 84, H - 84);
 
-                ctx.strokeStyle = '#c59b27';
+                ctx.strokeStyle = isPart ? '#60a5fa' : '#c59b27';
                 ctx.lineWidth = 3;
                 ctx.strokeRect(58, 58, W - 116, H - 116);
 
                 // 4. Yuqori sarlavhalar
                 ctx.textAlign = 'center';
-                ctx.fillStyle = '#0f294a';
+                ctx.fillStyle = primaryColor;
                 ctx.font = '700 22px Inter, sans-serif';
                 ctx.fillText("O'ZBEKISTON RESPUBLIKASI • SIRDARYO VILOYATI • SAYXUNOBOD TUMANI", W / 2, 130);
 
-                ctx.fillStyle = '#8a6d1b';
+                ctx.fillStyle = isPart ? '#2563eb' : '#8a6d1b';
                 ctx.font = '600 20px Inter, sans-serif';
                 ctx.fillText("23-SONLI UMUMTA'LIM MAKTABI • MILLIY SERTIFIKAT TAYYORLOV MARKAZI", W / 2, 168);
 
-                // Ajratuvchi oltin chiziq
-                ctx.strokeStyle = '#d4af37';
+                ctx.strokeStyle = accentColor;
                 ctx.lineWidth = 2;
                 ctx.beginPath();
                 ctx.moveTo(W / 2 - 260, 195);
                 ctx.lineTo(W / 2 + 260, 195);
                 ctx.stroke();
 
-                // 5. SERTIFIKAT katta sarlavhasi
-                ctx.fillStyle = '#0f294a';
+                // 5. SERTIFIKAT sarlavhasi
+                ctx.fillStyle = primaryColor;
                 ctx.font = '800 84px Cinzel, Georgia, serif';
                 ctx.fillText("SERTIFIKAT", W / 2, 290);
 
@@ -627,12 +626,10 @@
                 ctx.font = '500 24px Inter, sans-serif';
                 ctx.fillText("Ushbu sertifikat", W / 2, 355);
 
-                // O'quvchi F.I.Sh
                 ctx.fillStyle = '#0f172a';
                 ctx.font = '800 50px Inter, sans-serif';
                 ctx.fillText(result.studentName.toUpperCase(), W / 2, 425);
 
-                // Ism ostidagi chiziq
                 ctx.strokeStyle = '#cbd5e1';
                 ctx.lineWidth = 2;
                 ctx.beginPath();
@@ -640,81 +637,80 @@
                 ctx.lineTo(W / 2 + 380, 445);
                 ctx.stroke();
 
-                // Sinfi va tavsif matni
                 ctx.fillStyle = '#1e3a8a';
                 ctx.font = '700 25px Inter, sans-serif';
                 ctx.fillText(`(${result.studentGroup} o'quvchisi)`, W / 2, 488);
 
                 ctx.fillStyle = '#334155';
                 ctx.font = '400 24px Inter, sans-serif';
-                ctx.fillText("Milliy Sertifikat (MOC) sinov imtihonida yuqori bilim va salohiyat", W / 2, 542);
-                ctx.fillText("ko'rsatgani uchun taqdirlanadi.", W / 2, 578);
+                if (isPart) {
+                    ctx.fillText("Matematika fanidan Milliy Sertifikat (MOC) sinov imtihonida", W / 2, 542);
+                    ctx.fillText("faol ishtirok etgani uchun taqdim etiladi.", W / 2, 578);
+                } else {
+                    ctx.fillText("Milliy Sertifikat (MOC) sinov imtihonida yuqori bilim va salohiyat", W / 2, 542);
+                    ctx.fillText("ko'rsatgani uchun taqdirlanadi.", W / 2, 578);
+                }
 
-                // 7. Daraja (A+, A, B+, B, C+, C) va Rasch Balli Markaziy Bloki
-                const boxW = 640;
+                // 7. Daraja va Rasch Balli Markaziy Bloki
+                const boxW = 680;
                 const boxH = 175;
                 const boxX = (W - boxW) / 2;
                 const boxY = 615;
 
-                // To'q ko'k fonli nishon qutisi
-                ctx.fillStyle = '#0f294a';
+                ctx.fillStyle = primaryColor;
                 this.roundRect(ctx, boxX, boxY, boxW, boxH, 24, true, false);
-                ctx.strokeStyle = '#d4af37';
+                ctx.strokeStyle = accentColor;
                 ctx.lineWidth = 4;
                 this.roundRect(ctx, boxX, boxY, boxW, boxH, 24, false, true);
 
-                // Chap tarafda Daraja belgisi
-                ctx.fillStyle = '#facc15';
-                ctx.font = '800 76px Inter, sans-serif';
-                ctx.fillText(result.grade.level, boxX + 145, boxY + 108);
+                ctx.textAlign = 'center';
+                ctx.fillStyle = isPart ? '#93c5fd' : '#facc15';
+                ctx.font = isPart ? '800 32px Inter, sans-serif' : '800 76px Inter, sans-serif';
+                ctx.fillText(result.grade.level, boxX + 155, isPart ? boxY + 95 : boxY + 108);
 
                 ctx.fillStyle = '#cbd5e1';
-                ctx.font = '600 15px Inter, sans-serif';
-                ctx.fillText("SERTIFIKAT DARAJASI", boxX + 145, boxY + 142);
+                ctx.font = '600 14px Inter, sans-serif';
+                ctx.fillText(isPart ? "NATIJA MAQOMI" : "SERTIFIKAT DARAJASI", boxX + 155, boxY + 142);
 
-                // Vertikal ajratuvchi chiziq
                 ctx.strokeStyle = 'rgba(212, 175, 55, 0.4)';
                 ctx.lineWidth = 2;
                 ctx.beginPath();
-                ctx.moveTo(boxX + 280, boxY + 25);
-                ctx.lineTo(boxX + 280, boxY + boxH - 25);
+                ctx.moveTo(boxX + 305, boxY + 25);
+                ctx.lineTo(boxX + 305, boxY + boxH - 25);
                 ctx.stroke();
 
-                // O'ng tarafda Rasch balli va tafsilot
                 ctx.textAlign = 'left';
                 ctx.fillStyle = '#ffffff';
                 ctx.font = '800 36px Inter, sans-serif';
-                ctx.fillText(`${result.raschScore} ball`, boxX + 310, boxY + 72);
+                ctx.fillText(`${result.raschScore} ball`, boxX + 335, boxY + 72);
 
                 ctx.fillStyle = '#93c5fd';
                 ctx.font = '500 19px Inter, sans-serif';
-                ctx.fillText("Rasch (Rash) modeli asosida", boxX + 310, boxY + 105);
+                ctx.fillText("Rasch (Rash) modeli asosida", boxX + 335, boxY + 105);
 
                 ctx.fillStyle = '#e2e8f0';
                 ctx.font = '500 18px Inter, sans-serif';
-                ctx.fillText(`To'g'ri javoblar: ${result.rawScore} / ${result.maxRawScore} birlik`, boxX + 310, boxY + 138);
+                ctx.fillText(`To'g'ri javoblar: ${result.rawScore} / ${result.maxRawScore} birlik`, boxX + 335, boxY + 138);
 
-                // 8. Oltin Muhr (Gold Seal)
-                const sealX = W / 2;
-                const sealY = 935;
-                this.drawGoldSeal(ctx, sealX, sealY, result.grade.level);
+                // 8. Muhr
+                this.drawGoldSeal(ctx, W / 2, 935, isPart ? "MOC" : result.grade.level, isPart);
 
-                // 9. Pastki Chap: Sana va Sertifikat ID
+                // 9. Pastki Chap
                 ctx.textAlign = 'left';
                 ctx.fillStyle = '#475569';
                 ctx.font = '600 19px Inter, sans-serif';
                 ctx.fillText(`Berilgan sana: ${result.formattedDate}`, 130, 915);
-                ctx.fillStyle = '#0f294a';
+                ctx.fillStyle = primaryColor;
                 ctx.font = '700 19px monospace';
                 ctx.fillText(`Sertifikat ID: ${result.certId}`, 130, 952);
 
-                // 10. Pastki O'ng: O'qituvchi imzo bloki
+                // 10. Pastki O'ng
                 ctx.textAlign = 'right';
                 ctx.fillStyle = '#475569';
                 ctx.font = '600 19px Inter, sans-serif';
                 ctx.fillText("Fan o'qituvchisi:", W - 130, 905);
 
-                ctx.fillStyle = '#0f294a';
+                ctx.fillStyle = primaryColor;
                 ctx.font = '800 24px Inter, sans-serif';
                 ctx.fillText("Ustoz Islom", W - 130, 942);
 
@@ -730,9 +726,8 @@
                 ctx.fillText("23-maktab, Sayxunobod tumani", W - 130, 980);
             }
 
-            static drawGoldSeal(ctx, cx, cy, level) {
+            static drawGoldSeal(ctx, cx, cy, level, isPart = false) {
                 ctx.save();
-                // Tishli oltin aylana
                 const spikes = 36;
                 const outerR = 68;
                 const innerR = 61;
@@ -748,21 +743,26 @@
                 ctx.closePath();
 
                 const grad = ctx.createRadialGradient(cx - 15, cy - 15, 10, cx, cy, outerR);
-                grad.addColorStop(0, '#fef08a');
-                grad.addColorStop(0.5, '#eab308');
-                grad.addColorStop(1, '#a16207');
+                if (isPart) {
+                    grad.addColorStop(0, '#dbeafe');
+                    grad.addColorStop(0.5, '#3b82f6');
+                    grad.addColorStop(1, '#1d4ed8');
+                } else {
+                    grad.addColorStop(0, '#fef08a');
+                    grad.addColorStop(0.5, '#eab308');
+                    grad.addColorStop(1, '#a16207');
+                }
                 ctx.fillStyle = grad;
                 ctx.fill();
 
-                // Ichki halqa
                 ctx.beginPath();
                 ctx.arc(cx, cy, 48, 0, Math.PI * 2);
-                ctx.strokeStyle = '#713f12';
+                ctx.strokeStyle = isPart ? '#1e3a8a' : '#713f12';
                 ctx.lineWidth = 2;
                 ctx.stroke();
 
                 ctx.textAlign = 'center';
-                ctx.fillStyle = '#422006';
+                ctx.fillStyle = isPart ? '#ffffff' : '#422006';
                 ctx.font = '800 13px Inter, sans-serif';
                 ctx.fillText("MOC • 23-MAKTAB", cx, cy - 12);
 
@@ -802,10 +802,8 @@
                     return { sent: false, reason: "Telegram sozlanmagan" };
                 }
 
-                const statusEmoji = result.grade.eligible ? "🏆" : "📝";
-                const certLine = result.grade.eligible
-                    ? `🎖 <b>Sertifikat darajasi:</b> ${result.grade.level} (<code>${result.certId}</code>)`
-                    : `📌 <b>Holat:</b> Sertifikat darajasiga yetmadi (&lt; 46.0)`;
+                const statusEmoji = !result.grade.isParticipation ? "🏆" : "📝";
+                const certLine = `🎖 <b>Sertifikat:</b> ${result.grade.level} (<code>${result.certId}</code>)`;
 
                 const text = [
                     `${statusEmoji} <b>YANGI MOC IMTIHON NATIJASI</b>`,
@@ -851,12 +849,12 @@
 
         /**
          * ============================================================================
-         * 6. ASOSIY ILOVA BOSHQARUVCHISI (STATE & UI)
+         * 6. ASOSIY ILOVA BOSHQARUVCHISI
          * ============================================================================
          */
         const app = {
             state: {
-                view: 'home', // 'home' | 'exam' | 'result' | 'teacher_auth' | 'teacher'
+                view: 'home',
                 teacherAuthenticated: false,
                 questions: [],
                 dataSourceLabel: 'Ichki tayyor baza (45 savol)',
@@ -867,7 +865,6 @@
                 timerInterval: null
             },
 
-            // URL parametrlaridan (?cfg=Base64) konfiguratsiyani o'qish
             applyUrlConfigIfPresent() {
                 try {
                     const params = new URLSearchParams(window.location.search);
@@ -975,6 +972,16 @@
                 };
             },
 
+            zoomImage(src) {
+                const modal = document.getElementById('image-zoom-modal');
+                const img = document.getElementById('zoomed-img');
+                if (modal && img) {
+                    img.src = src;
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
+                }
+            },
+
             renderMath() {
                 if (window.renderMathInElement) {
                     try {
@@ -1071,7 +1078,8 @@
                         break;
                     case 'result':
                         main.innerHTML = this.renderResultView();
-                        this.drawCertificateIfEligible();
+                        // Shriftlar va DOM to'liq tayyor bo'lgandan keyin sertifikatni chizish
+                        setTimeout(() => this.drawCertificateIfEligible(), 80);
                         break;
                     case 'teacher_auth':
                         main.innerHTML = this.renderTeacherAuthView();
@@ -1085,7 +1093,7 @@
 
             /**
              * ====================================================================
-             * A) BOSH SAHIFA (O'QUVCHI KIRISH OYNASI)
+             * A) BOSH SAHIFA
              * ====================================================================
              */
             renderHomeView() {
@@ -1096,7 +1104,6 @@
 
                 return `
                 <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start fade-in">
-                    <!-- Chap ustun: Imtihon ma'lumotlari -->
                     <div class="lg:col-span-7 space-y-6">
                         <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm">
                             <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
@@ -1114,10 +1121,9 @@
                                 ${this.escapeHtml(cfg.examTitle)}
                             </h1>
                             <p class="text-slate-600 text-sm sm:text-base leading-relaxed mb-6">
-                                Hurmatli o'quvchi! Istalgan vaqtda imtihonni boshlashingiz mumkin. Natijalaringiz <strong>Rasch (Rash) psixometrik modeli</strong> asosida baholanadi va <strong>46.0 ball</strong>dan yuqori natija ko'rsatsangiz, sizga maxsus <strong>Sertifikat</strong> taqdim etiladi!
+                                Hurmatli o'quvchi! Imtihonni yakunlaganingizdan so'ng natijangiz <strong>Rasch (Rash) modeli</strong> asosida hisoblanadi va sizga shaxsiy <strong>Sertifikat</strong> taqdim etiladi!
                             </p>
 
-                            <!-- Parametrlar -->
                             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                                 <div class="bg-slate-50 rounded-2xl p-3.5 border border-slate-100">
                                     <div class="text-xs text-slate-500 font-medium mb-1">Jami savollar</div>
@@ -1141,11 +1147,10 @@
                                 </div>
                             </div>
 
-                            <!-- Sertifikat Darajalari Jadvali -->
                             <div class="bg-gradient-to-r from-slate-900 to-blue-950 rounded-2xl p-4 sm:p-5 text-white">
                                 <div class="flex items-center justify-between mb-3">
                                     <span class="text-xs font-bold uppercase tracking-wider text-amber-300">
-                                        <i class="fa-solid fa-certificate mr-1"></i>Sertifikat berish mezonlari (Rasch balli)
+                                        <i class="fa-solid fa-certificate mr-1"></i>Sertifikat darajalari (Rasch balli)
                                     </span>
                                 </div>
                                 <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
@@ -1178,7 +1183,6 @@
                         </div>
                     </div>
 
-                    <!-- O'ng ustun: Imtihonni boshlash formasi -->
                     <div class="lg:col-span-5">
                         <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-lg">
                             <h2 class="text-xl font-bold text-slate-900 mb-1">Imtihonni boshlash</h2>
@@ -1226,7 +1230,7 @@
 
             /**
              * ====================================================================
-             * B) IMTIHON JARAYONI
+             * B) IMTIHON JARAYONI (CHIZMALARNI KO'RSATISH BILAN)
              * ====================================================================
              */
             startExam(e) {
@@ -1312,9 +1316,22 @@
                                 <span class="text-xs text-slate-400 font-medium">${q.id} / ${questions.length}</span>
                             </div>
 
-                            <div class="text-base sm:text-lg text-slate-900 font-medium leading-relaxed mb-6 whitespace-pre-line">
+                            <!-- Savol matni -->
+                            <div class="text-base sm:text-lg text-slate-900 font-medium leading-relaxed mb-5 whitespace-pre-line">
                                 ${this.escapeHtml(q.text)}
                             </div>
+
+                            <!-- AGAR SAVOLDA CHIZMA / RASM BO'LSA SHU YERDA CHIQADI -->
+                            ${q.imageUrl ? `
+                                <div class="mb-6 bg-slate-50 border border-slate-200 rounded-2xl p-3 flex flex-col items-center">
+                                    <img src="${this.escapeHtml(q.imageUrl)}"
+                                         alt="${q.id}-savol chizmasi"
+                                         onclick="app.zoomImage(this.src)"
+                                         onerror="this.parentElement.innerHTML='<span class=\\'text-xs text-rose-500\\'><i class=\\'fa-solid fa-image-slash mr-1\\'></i>Chizma yuklanmadi (havolani tekshiring)</span>'"
+                                         class="max-h-72 w-auto object-contain rounded-xl cursor-zoom-in transition hover:scale-[1.01]">
+                                    <span class="text-[11px] text-slate-400 mt-2"><i class="fa-solid fa-magnifying-glass-plus mr-1"></i>Kattalashtirish uchun chizma ustiga bosing</span>
+                                </div>
+                            ` : ''}
 
                             ${q.type === 'closed' ? `
                                 <div class="space-y-3">
@@ -1342,7 +1359,6 @@
                                         Javob formati: butun son (<code>5</code>), o'nli kasr (<code>0.4</code>) yoki oddiy kasr (<code>3/4</code>) ko'rinishida yozing.
                                     </div>
 
-                                    <!-- a) shart -->
                                     <div>
                                         <div class="text-sm font-bold text-indigo-950 mb-2">
                                             ${this.escapeHtml(q.partAPrompt)}
@@ -1357,7 +1373,6 @@
                                         </div>
                                     </div>
 
-                                    <!-- b) shart -->
                                     <div class="pt-3 border-t border-slate-200">
                                         <div class="text-sm font-bold text-indigo-950 mb-2">
                                             ${this.escapeHtml(q.partBPrompt)}
@@ -1374,7 +1389,6 @@
                                 </div>
                             `}
 
-                            <!-- Oldingi / Keyingi -->
                             <div class="flex items-center justify-between mt-8 pt-5 border-t border-slate-100">
                                 <button onclick="app.navigateQuestion(${q.id - 1})" ${q.id === 1 ? 'disabled' : ''}
                                     class="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold text-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-2">
@@ -1565,10 +1579,9 @@
                 this.render();
 
                 if (!auto) {
-                    this.toast("Imtihon yakunlandi! Natijangiz tayyor.", "success");
+                    this.toast("Imtihon yakunlandi! Sertifikatingiz tayyor.", "success");
                 }
 
-                // Telegram botga avtomatik yuborish
                 const cfg = this.getConfig();
                 const tgRes = await TelegramNotifier.sendResult(cfg, evaluated);
                 this.state.telegramStatus = { sending: false, ...tgRes };
@@ -1594,7 +1607,7 @@
                     return this.renderHomeView();
                 }
 
-                const neededForC = Math.max(0, (46.0 - r.raschScore).toFixed(1));
+                const isPart = r.grade.isParticipation;
 
                 return `
                 <div class="space-y-6 fade-in">
@@ -1627,7 +1640,7 @@
 
                             <div class="bg-slate-50 rounded-2xl p-5 border border-slate-200/80">
                                 <div class="text-xs font-medium text-slate-500 mb-1">Sertifikat Darajasi</div>
-                                <div class="text-2xl font-extrabold ${r.grade.eligible ? 'text-emerald-700' : 'text-rose-600'} mt-0.5">
+                                <div class="text-2xl font-extrabold ${!isPart ? 'text-emerald-700' : 'text-blue-700'} mt-0.5">
                                     ${r.grade.level}
                                 </div>
                                 <div class="text-xs text-slate-600 mt-2">${r.grade.desc}</div>
@@ -1647,53 +1660,38 @@
                         </div>
                     </div>
 
-                    <!-- SERTIFIKAT OYNASI YOKI RAG'BATLANTIRISH XABARI -->
-                    ${r.grade.eligible ? `
-                        <div class="bg-gradient-to-b from-amber-50/80 to-white rounded-3xl p-6 sm:p-8 border-2 border-amber-200 shadow-md space-y-5">
-                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                <div class="flex items-center gap-3">
-                                    <div class="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center text-2xl shadow">
-                                        <i class="fa-solid fa-award"></i>
-                                    </div>
-                                    <div>
-                                        <h2 class="text-xl font-extrabold text-slate-900">Tabriklaymiz! Siz ${r.grade.level} darajali Sertifikatga loyiq ko'rildingiz!</h2>
-                                        <p class="text-xs sm:text-sm text-slate-600">Sertifikatni yuqori sifatli PNG rasm shaklida yuklab oling va yaqinlaringiz bilan ulashing.</p>
-                                    </div>
-                                </div>
-                                <button onclick="app.downloadCertificatePNG()"
-                                    class="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 font-extrabold text-sm shadow-lg transition flex items-center justify-center gap-2 shrink-0">
-                                    <i class="fa-solid fa-download"></i>
-                                    <span>Sertifikatni yuklab olish (PNG)</span>
-                                </button>
-                            </div>
-
-                            <!-- Canvas Preview -->
-                            <div class="overflow-hidden rounded-2xl border border-slate-300 shadow-inner bg-slate-100">
-                                <canvas id="certificate-canvas" class="w-full h-auto block"></canvas>
-                            </div>
-                        </div>
-                    ` : `
-                        <div class="bg-rose-50/70 rounded-3xl p-6 sm:p-8 border border-rose-200 flex flex-col sm:flex-row items-center justify-between gap-6">
-                            <div class="flex items-start gap-4">
-                                <div class="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center text-xl shrink-0">
-                                    <i class="fa-solid fa-book-open-reader"></i>
+                    <!-- SERTIFIKAT OYNASI (HAR DOIM KO'RINADI VA YUKLAB OLINADI) -->
+                    <div class="bg-gradient-to-b ${isPart ? 'from-blue-50/80 to-white border-blue-200' : 'from-amber-50/80 to-white border-amber-200'} rounded-3xl p-6 sm:p-8 border-2 shadow-md space-y-5">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-12 h-12 rounded-2xl ${isPart ? 'bg-blue-600' : 'bg-amber-500'} text-white flex items-center justify-center text-2xl shadow">
+                                    <i class="fa-solid fa-award"></i>
                                 </div>
                                 <div>
-                                    <h3 class="text-lg font-extrabold text-slate-900">Hali hammasi oldinda!</h3>
-                                    <p class="text-sm text-slate-600 mt-1 leading-relaxed">
-                                        Sizning natijangiz <strong>${r.raschScore} ball</strong>. Minimal <strong>C</strong> darajali sertifikat olish uchun yana atigi <strong>${neededForC} ball</strong> yetmadi. Xatolaringizni quyidagi jadvaldan ko'rib chiqing va qayta urinib ko'ring!
-                                    </p>
+                                    <h2 class="text-xl font-extrabold text-slate-900">
+                                        ${isPart
+                                            ? "Imtihonda faol qatnashganingiz uchun Ishtirokchi Sertifikati!"
+                                            : `Tabriklaymiz! Siz ${r.grade.level} darajali Sertifikatga loyiq ko'rildingiz!`
+                                        }
+                                    </h2>
+                                    <p class="text-xs sm:text-sm text-slate-600">Sertifikatni yuqori sifatli PNG rasm shaklida yuklab oling.</p>
                                 </div>
                             </div>
-                            <button onclick="app.goHome()" class="px-6 py-3 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold text-sm transition shrink-0 shadow">
-                                Qayta topshirish
+                            <button onclick="app.downloadCertificatePNG()"
+                                class="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 font-extrabold text-sm shadow-lg transition flex items-center justify-center gap-2 shrink-0">
+                                <i class="fa-solid fa-download"></i>
+                                <span>Sertifikatni yuklab olish (PNG)</span>
                             </button>
                         </div>
-                    `}
+
+                        <div class="overflow-hidden rounded-2xl border border-slate-300 shadow-inner bg-slate-100">
+                            <canvas id="certificate-canvas" class="w-full h-auto block"></canvas>
+                        </div>
+                    </div>
 
                     <!-- Savollar Bo'yicha Batafsil Tahlil -->
                     <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm">
-                        <h2 class="text-lg font-bold text-slate-900 mb-4">Topshiriqlar tahlili (55 ta birlik)</h2>
+                        <h2 class="text-lg font-bold text-slate-900 mb-4">Topshiriqlar tahlili (${r.maxRawScore} ta birlik)</h2>
                         <div class="overflow-x-auto">
                             <table class="w-full text-left border-collapse text-sm">
                                 <thead>
@@ -1730,7 +1728,7 @@
 
             drawCertificateIfEligible() {
                 const r = this.state.currentResult;
-                if (!r || !r.grade.eligible) return;
+                if (!r) return;
                 const canvas = document.getElementById('certificate-canvas');
                 if (canvas) {
                     CertificateGenerator.drawToCanvas(canvas, r);
@@ -1741,17 +1739,23 @@
                 const canvas = document.getElementById('certificate-canvas');
                 const r = this.state.currentResult;
                 if (!canvas || !r) return;
-                const link = document.createElement('a');
-                const safeName = r.studentName.replace(/[^a-zA-Z0-9_\u0400-\u04FF]+/g, '_');
-                link.download = `Sertifikat_${safeName}_${r.grade.level}.png`;
-                link.href = canvas.toDataURL('image/png');
-                link.click();
-                this.toast("Sertifikat PNG formatida yuklab olindi!", "success");
+                try {
+                    const link = document.createElement('a');
+                    const safeName = r.studentName.replace(/[^a-zA-Z0-9_\u0400-\u04FF]+/g, '_');
+                    link.download = `Sertifikat_${safeName}_${r.grade.level}.png`;
+                    link.href = canvas.toDataURL('image/png');
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    this.toast("Sertifikat PNG formatida yuklab olindi!", "success");
+                } catch (err) {
+                    this.toast("Yuklab olishda xatolik: rasm ustiga bosib saqlab oling.", "warning");
+                }
             },
 
             /**
              * ====================================================================
-             * D) O'QITUVCHI SOZLAMALAR PANELI (GOOGLE SHEETS + TELEGRAM + HAVOLA)
+             * D) O'QITUVCHI SOZLAMALAR PANELI
              * ====================================================================
              */
             renderTeacherAuthView() {
@@ -1809,24 +1813,22 @@
                         </div>
 
                         <form onsubmit="app.saveTeacherConfig(event)" class="space-y-6 mt-6">
-                            <!-- 1. Google Sheets CSV URL -->
                             <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3">
                                 <div class="flex items-center justify-between">
                                     <label class="text-sm font-extrabold text-slate-900 flex items-center gap-2">
                                         <i class="fa-solid fa-table text-emerald-600"></i>
                                         <span>1. Google Sheets (CSV) havolasi</span>
                                     </label>
-                                    <span class="text-[11px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">Doimiy yangilanuvchi baza</span>
+                                    <span class="text-[11px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">Chizmalar (L ustun) qo'llab-quvvatlanadi</span>
                                 </div>
                                 <input type="url" id="cfg-sheet-url" value="${this.escapeHtml(cfg.googleSheetCsvUrl)}"
                                     placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv"
                                     class="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white focus:border-blue-600 outline-none text-sm font-mono">
                                 <p class="text-xs text-slate-500 leading-relaxed">
-                                    <strong>Qanday olinadi?</strong> Google Sheets jadvalingizda: <code>Fayl (File) → Ulashish (Share) → Vebda nashr qilish (Publish to web)</code> bo'limiga kiring, formatni <strong>CSV (.csv)</strong> tanlab <strong>Publish</strong> bosing va chiqqan havolani shu yerga qo'ying.
+                                    <strong>Chizma qo'shish uchun:</strong> Google Sheets jadvalining <strong>L ustuniga</strong> (12-ustun) rasm havolasini (Google Drive yoki GitHub rasm linkini) yozing.
                                 </p>
                             </div>
 
-                            <!-- 2. Telegram Bot Sozlamalari -->
                             <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-4">
                                 <div class="flex items-center justify-between">
                                     <label class="text-sm font-extrabold text-slate-900 flex items-center gap-2">
@@ -1855,7 +1857,6 @@
                                 </div>
                             </div>
 
-                            <!-- 3. Imtihon nomi, vaqti va PIN -->
                             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div class="sm:col-span-1">
                                     <label class="block text-xs font-bold text-slate-700 mb-1">Imtihon vaqti (daqiqa)</label>
@@ -1882,7 +1883,7 @@
                         </form>
                     </div>
 
-                    <!-- O'QUVCHILARGA ULASHISH HAVOLASI (DIRECT LINK) -->
+                    <!-- O'QUVCHILARGA ULASHISH HAVOLASI -->
                     <div class="bg-gradient-to-r from-indigo-900 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-lg space-y-4">
                         <div class="flex items-start gap-3">
                             <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-amber-300 shrink-0">
@@ -1891,7 +1892,7 @@
                             <div>
                                 <h2 class="text-lg font-extrabold">O'quvchilarga yuborish uchun Tayyor Havola (Ssilka)</h2>
                                 <p class="text-xs text-slate-300 mt-0.5 leading-relaxed">
-                                    Quyidagi havolani nusxalab o'quvchilarning Telegram guruhiga tashlang. O'quvchilar shu havola orqali kirganda ularning telefonida avtomatik ravishda sizning <strong>Google Sheets savollaringiz</strong> ochiladi va natijalar sizning <strong>Telegram botingizga</strong> boradi!
+                                    Sozlamalarni saqlaganingizdan so'ng quyidagi havolani nusxalab o'quvchilarga yuboring.
                                 </p>
                             </div>
                         </div>
@@ -1905,85 +1906,6 @@
                             </button>
                         </div>
                     </div>
-
-                    <!-- Google Sheets Ustunlar Yo'riqnomasi -->
-                    <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-4">
-                        <h3 class="text-base font-extrabold text-slate-900">Google Sheets jadvalini to'ldirish qoidasi (10 ta ustun)</h3>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left border-collapse text-xs">
-                                <thead>
-                                    <tr class="bg-slate-100 text-slate-700">
-                                        <th class="p-2.5 border border-slate-200">A: Savol_raqami</th>
-                                        <th class="p-2.5 border border-slate-200">B: Turi</th>
-                                        <th class="p-2.5 border border-slate-200">C: Savol_matni</th>
-                                        <th class="p-2.5 border border-slate-200">D: A_variant / a) shart</th>
-                                        <th class="p-2.5 border border-slate-200">E: B_variant / b) shart</th>
-                                        <th class="p-2.5 border border-slate-200">F: C_variant</th>
-                                        <th class="p-2.5 border border-slate-200">G: D_variant</th>
-                                        <th class="p-2.5 border border-slate-200">H: Togri_javob_A</th>
-                                        <th class="p-2.5 border border-slate-200">I: Togri_javob_B</th>
-                                        <th class="p-2.5 border border-slate-200">J: Vaqt_daqiqa</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td class="p-2.5 border border-slate-200 font-bold">1</td>
-                                        <td class="p-2.5 border border-slate-200">yopiq</td>
-                                        <td class="p-2.5 border border-slate-200">$2x + 4 = 10$ ni yeching</td>
-                                        <td class="p-2.5 border border-slate-200">2</td>
-                                        <td class="p-2.5 border border-slate-200">3</td>
-                                        <td class="p-2.5 border border-slate-200">4</td>
-                                        <td class="p-2.5 border border-slate-200">5</td>
-                                        <td class="p-2.5 border border-slate-200 font-bold text-emerald-700">B</td>
-                                        <td class="p-2.5 border border-slate-200 text-slate-400">(bo'sh)</td>
-                                        <td class="p-2.5 border border-slate-200 font-bold">150</td>
-                                    </tr>
-                                    <tr class="bg-indigo-50/40">
-                                        <td class="p-2.5 border border-slate-200 font-bold">36</td>
-                                        <td class="p-2.5 border border-slate-200 text-indigo-700 font-semibold">yozma</td>
-                                        <td class="p-2.5 border border-slate-200">$f(x)=x^2-4x+3$ berilgan.</td>
-                                        <td class="p-2.5 border border-slate-200">a) Katta ildizini toping</td>
-                                        <td class="p-2.5 border border-slate-200">b) Eng kichik qiymatini toping</td>
-                                        <td class="p-2.5 border border-slate-200 text-slate-400">(bo'sh)</td>
-                                        <td class="p-2.5 border border-slate-200 text-slate-400">(bo'sh)</td>
-                                        <td class="p-2.5 border border-slate-200 font-bold text-emerald-700">3</td>
-                                        <td class="p-2.5 border border-slate-200 font-bold text-emerald-700">-1</td>
-                                        <td class="p-2.5 border border-slate-200 text-slate-400">(bo'sh)</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    ${subs.length > 0 ? `
-                        <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm">
-                            <h3 class="text-base font-extrabold text-slate-900 mb-4">Ushbu qurilmadagi so'nggi natijalar (${subs.length})</h3>
-                            <div class="overflow-x-auto">
-                                <table class="w-full text-left border-collapse text-xs sm:text-sm">
-                                    <thead>
-                                        <tr class="bg-slate-900 text-white text-xs">
-                                            <th class="p-3 rounded-tl-xl">O'quvchi</th>
-                                            <th class="p-3">Sinf</th>
-                                            <th class="p-3">To'g'ri (55)</th>
-                                            <th class="p-3">Rasch Balli</th>
-                                            <th class="p-3 rounded-tr-xl">Sertifikat</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="divide-y divide-slate-100">
-                                        ${subs.slice().reverse().map(s => `
-                                            <tr>
-                                                <td class="p-3 font-bold">${this.escapeHtml(s.studentName)}</td>
-                                                <td class="p-3 text-slate-500">${this.escapeHtml(s.studentGroup)}</td>
-                                                <td class="p-3">${s.rawScore} / 55</td>
-                                                <td class="p-3 font-extrabold text-blue-700">${s.raschScore}</td>
-                                                <td class="p-3 font-bold">${s.grade.level}</td>
-                                            </tr>
-                                        `).join('')}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    ` : ''}
                 </div>
                 `;
             },
@@ -2026,7 +1948,7 @@
                         raschScore: 71.25,
                         theta: 1.3,
                         certId: "MOC-2026-TEST",
-                        grade: { eligible: true, level: "A+" }
+                        grade: { eligible: true, isParticipation: false, level: "A+" }
                     }
                 );
 
@@ -2058,7 +1980,7 @@
                 input.setSelectionRange(0, 99999);
                 try {
                     document.execCommand('copy');
-                    this.toast("O'quvchilar uchun havola nusxalandi! Endi Telegram guruhga tashlashingiz mumkin.", "success");
+                    this.toast("O'quvchilar uchun havola nusxalandi!", "success");
                 } catch (e) {
                     this.toast("Havolani qo'lda belgilab nusxalang.", "warning");
                 }
@@ -2073,7 +1995,7 @@
                 link.download = 'MOC_Savollar_Namuna_Ustoz_Islom.csv';
                 link.click();
                 URL.revokeObjectURL(url);
-                this.toast("Namuna CSV fayl yuklab olindi! Uni Google Sheets'ga yuklashingiz mumkin.", "success");
+                this.toast("Namuna CSV fayl yuklab olindi!", "success");
             },
 
             escapeHtml(str) {
