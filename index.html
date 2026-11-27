@@ -77,8 +77,8 @@
 
             <div class="flex items-center gap-2">
                 <button onclick="app.goHome()" class="px-3 py-2 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center gap-2">
-                    <i class="fa-solid fa-house"></i>
-                    <span class="hidden sm:inline">Bosh sahifa</span>
+                    <i class="fa-solid fa-layer-group"></i>
+                    <span class="hidden sm:inline">Testlar bazasi</span>
                 </button>
                 <button onclick="app.openTeacherAuth()" title="O'qituvchi sozlamalari"
                     class="w-10 h-10 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center justify-center">
@@ -106,23 +106,35 @@
     <script>
         /**
          * ============================================================================
-         * 1. KONFIGURATSIYA VA BOSHLANG'ICH MA'LUMOTLAR
+         * 1. DOIMIY TESTLAR RO'YXATI (GITHUB'DA SAQLANADIGAN ASOSIY BAZA)
+         * Ustoz: Yangi test qo'shganingizda shu ro'yxatga bitta obyekt qo'shib qo'ysangiz,
+         * saytga kirgan BARCHA o'quvchilarda ssilkasiz ham darhol ko'rinib turadi!
          * ============================================================================
          */
+        const BUILTIN_TESTS = [
+            {
+                id: "test_04_10_2026_2",
+                title: "04.10.2026 (2-smena) — Milliy Sertifikat (MOC)",
+                subtitle: "45 ta savol • Yopiq va yozma topshiriqlar",
+                durationMinutes: 150,
+                csvUrl: "", // Google Sheets CSV havolangizni shu yerga qo'yishingiz yoki Sozlamalardan kiritishingiz mumkin
+                imageFolder: "", // Agar rasmlar asosiy papkada bo'lsa bo'sh qoldiring, papkada bo'lsa masalan: "test2/"
+                isFallbackDemo: true
+            }
+        ];
+
         const STORAGE_KEYS = {
-            CONFIG: 'moc_islom_config_v3',
-            QUESTIONS_CACHE: 'moc_islom_questions_cache_v3',
-            SUBMISSIONS: 'moc_islom_submissions_v3',
-            ACTIVE_SESSION: 'moc_islom_active_session_v3'
+            CONFIG: 'moc_islom_config_v4',
+            QUESTIONS_CACHE_PREFIX: 'moc_islom_qcache_v4_',
+            SUBMISSIONS: 'moc_islom_submissions_v4',
+            ACTIVE_SESSION: 'moc_islom_active_session_v4'
         };
 
         const DEFAULT_CONFIG = {
-            examTitle: "Matematika fanidan Milliy Sertifikat (MOC) sinov imtihoni",
-            durationMinutes: 150,
             teacherPin: "1234",
-            googleSheetCsvUrl: "",
             telegramBotToken: "",
-            telegramChatId: ""
+            telegramChatId: "",
+            tests: [...BUILTIN_TESTS]
         };
 
         function getFallbackQuestions() {
@@ -206,23 +218,21 @@
 
         /**
          * ============================================================================
-         * 2. GOOGLE SHEETS CSV PARSER VA YUKLOVCHI (CHIZMALARNI QO'LLAB-QUVVATLAYDI)
+         * 2. GOOGLE SHEETS CSV PARSER VA YUKLOVCHI
          * ============================================================================
          */
         class GoogleSheetsLoader {
-            // Google Sheets'da ikkilanib qolgan \\frac kabi belgilarni tozalash
             static cleanLatex(str) {
                 if (!str) return '';
                 return String(str).replace(/\\\\([a-zA-Z]+)/g, '\\$1');
             }
 
-            // Google Drive yoki oddiy rasm havolasini to'g'ridan-to'g'ri rasm ko'rsatuvchi URL ga o'tkazish
-            static normalizeImageUrl(url) {
+            static normalizeImageUrl(url, imageFolder = '') {
                 if (!url) return '';
                 const clean = String(url).trim();
                 if (!clean) return '';
 
-                // Google Drive linkini (drive.google.com/file/d/ID/view) to'g'ridan-to'g'ri rasmga aylantirish
+                // Google Drive havolasi bo'lsa
                 const gdriveMatch = clean.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
                 if (gdriveMatch && gdriveMatch[1]) {
                     return `https://lh3.googleusercontent.com/d/${gdriveMatch[1]}`;
@@ -232,7 +242,20 @@
                     return `https://lh3.googleusercontent.com/d/${gdriveOpenMatch[1]}`;
                 }
 
-                return clean;
+                // Agar to'liq http havola bo'lsa o'zini qaytaramiz
+                if (clean.startsWith('http://') || clean.startsWith('https://')) {
+                    return clean;
+                }
+
+                // Aks holda fayl nomi (masalan 25.PNG) + test papkasi (masalan test2/)
+                let folder = String(imageFolder || '').trim();
+                if (folder && !folder.endsWith('/')) {
+                    folder += '/';
+                }
+                if (folder.startsWith('/')) {
+                    folder = folder.slice(1);
+                }
+                return `${folder}${clean}`;
             }
 
             static parseCSV(csvText) {
@@ -272,7 +295,7 @@
                 return rows;
             }
 
-            static async fetchFromUrl(csvUrl) {
+            static async fetchFromUrl(csvUrl, imageFolder = '') {
                 if (!csvUrl || !csvUrl.startsWith('http')) {
                     throw new Error("Google Sheets CSV havolasi kiritilmagan.");
                 }
@@ -293,7 +316,6 @@
                 let customDuration = null;
                 let customTitle = null;
 
-                // 1-qator sarlavha bo'lsa tashlab ketamiz, agar darhol 1-savol yozilgan bo'lsa uni ham o'qiymiz!
                 const firstCellNum = parseInt(rows[0][0], 10);
                 const startRow = (!isNaN(firstCellNum) && firstCellNum >= 1) ? 0 : 1;
 
@@ -312,8 +334,7 @@
                         customTitle = cols[10].trim();
                     }
 
-                    // L ustuni (index 11) - Chizma / Rasm havolasi
-                    const imageUrl = this.normalizeImageUrl(cols[11] || '');
+                    const imageUrl = this.normalizeImageUrl(cols[11] || '', imageFolder);
 
                     if (!isOpen) {
                         questions.push({
@@ -374,39 +395,20 @@
                 ];
                 const fallback = getFallbackQuestions();
                 const lines = [headers.join(',')];
-
                 const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
                 fallback.forEach((q, i) => {
                     if (q.type === 'closed') {
                         lines.push([
-                            q.id,
-                            "yopiq",
-                            esc(q.text),
-                            esc(q.options.A),
-                            esc(q.options.B),
-                            esc(q.options.C),
-                            esc(q.options.D),
-                            esc(q.correctA),
-                            "",
-                            i === 0 ? "150" : "",
+                            q.id, "yopiq", esc(q.text), esc(q.options.A), esc(q.options.B), esc(q.options.C), esc(q.options.D),
+                            esc(q.correctA), "", i === 0 ? "150" : "",
                             i === 0 ? esc("Matematika fanidan Milliy Sertifikat (MOC) sinov imtihoni") : "",
                             esc(q.imageUrl || "")
                         ].join(','));
                     } else {
                         lines.push([
-                            q.id,
-                            "yozma",
-                            esc(q.text),
-                            esc(q.partAPrompt),
-                            esc(q.partBPrompt),
-                            "",
-                            "",
-                            esc(q.correctA),
-                            esc(q.correctB),
-                            "",
-                            "",
-                            esc(q.imageUrl || "")
+                            q.id, "yozma", esc(q.text), esc(q.partAPrompt), esc(q.partBPrompt), "", "",
+                            esc(q.correctA), esc(q.correctB), "", "", esc(q.imageUrl || "")
                         ].join(','));
                     }
                 });
@@ -423,11 +425,7 @@
         class RaschEngine {
             static normalizeAnswer(val) {
                 if (val === null || val === undefined) return "";
-                return String(val)
-                    .trim()
-                    .toLowerCase()
-                    .replace(/\s+/g, '')
-                    .replace(/,/g, '.');
+                return String(val).trim().toLowerCase().replace(/\s+/g, '').replace(/,/g, '.');
             }
 
             static evaluateResponseVector(questions, studentAnswers) {
@@ -541,14 +539,13 @@
                 if (score >= 55.0) return { eligible: true, isParticipation: false, level: "B", color: "indigo", desc: "Qoniqarli yuqori daraja" };
                 if (score >= 50.0) return { eligible: true, isParticipation: false, level: "C+", color: "amber", desc: "O'rta daraja" };
                 if (score >= 46.0) return { eligible: true, isParticipation: false, level: "C", color: "orange", desc: "Minimal o'tish darajasi" };
-                // 46 balldan past bo'lganda ham o'quvchi ranjimasligi uchun "ISHTIROKCHI" sertifikati beriladi
                 return { eligible: true, isParticipation: true, level: "ISHTIROKCHI", color: "slate", desc: "Sinov imtihonida faol ishtirok etdi" };
             }
         }
 
         /**
          * ============================================================================
-         * 4. SERTIFIKAT GENERATORI (HTML5 CANVAS -> YUQORI SIFATLI PNG)
+         * 4. SERTIFIKAT GENERATORI
          * ============================================================================
          */
         class CertificateGenerator {
@@ -563,7 +560,6 @@
                 const primaryColor = isPart ? '#1e3a8a' : '#0f294a';
                 const accentColor = isPart ? '#3b82f6' : '#d4af37';
 
-                // 1. Asosiy fon
                 const bgGrad = ctx.createLinearGradient(0, 0, W, H);
                 bgGrad.addColorStop(0, '#ffffff');
                 bgGrad.addColorStop(0.5, isPart ? '#f8fafc' : '#fcfaf2');
@@ -571,7 +567,6 @@
                 ctx.fillStyle = bgGrad;
                 ctx.fillRect(0, 0, W, H);
 
-                // 2. Burchak naqshlari
                 ctx.fillStyle = primaryColor;
                 ctx.beginPath();
                 ctx.moveTo(0, 0); ctx.lineTo(340, 0); ctx.lineTo(0, 340);
@@ -590,7 +585,6 @@
                 ctx.moveTo(W - 340, H); ctx.lineTo(W - 375, H); ctx.lineTo(W, H - 375); ctx.lineTo(W, H - 340);
                 ctx.closePath(); ctx.fill();
 
-                // 3. Ramkalar
                 ctx.strokeStyle = primaryColor;
                 ctx.lineWidth = 8;
                 ctx.strokeRect(42, 42, W - 84, H - 84);
@@ -599,7 +593,6 @@
                 ctx.lineWidth = 3;
                 ctx.strokeRect(58, 58, W - 116, H - 116);
 
-                // 4. Yuqori sarlavhalar
                 ctx.textAlign = 'center';
                 ctx.fillStyle = primaryColor;
                 ctx.font = '700 22px Inter, sans-serif';
@@ -616,12 +609,10 @@
                 ctx.lineTo(W / 2 + 260, 195);
                 ctx.stroke();
 
-                // 5. SERTIFIKAT sarlavhasi
                 ctx.fillStyle = primaryColor;
                 ctx.font = '800 84px Cinzel, Georgia, serif';
                 ctx.fillText("SERTIFIKAT", W / 2, 290);
 
-                // 6. Kimga berilganligi
                 ctx.fillStyle = '#475569';
                 ctx.font = '500 24px Inter, sans-serif';
                 ctx.fillText("Ushbu sertifikat", W / 2, 355);
@@ -641,17 +632,17 @@
                 ctx.font = '700 25px Inter, sans-serif';
                 ctx.fillText(`(${result.studentGroup} o'quvchisi)`, W / 2, 488);
 
+                const examLabel = result.examTitle ? `«${result.examTitle}»` : "Matematika fanidan Milliy Sertifikat (MOC)";
                 ctx.fillStyle = '#334155';
-                ctx.font = '400 24px Inter, sans-serif';
+                ctx.font = '400 22px Inter, sans-serif';
                 if (isPart) {
-                    ctx.fillText("Matematika fanidan Milliy Sertifikat (MOC) sinov imtihonida", W / 2, 542);
-                    ctx.fillText("faol ishtirok etgani uchun taqdim etiladi.", W / 2, 578);
+                    ctx.fillText(`${examLabel} sinov imtihonida`, W / 2, 540);
+                    ctx.fillText("faol ishtirok etgani uchun taqdim etiladi.", W / 2, 576);
                 } else {
-                    ctx.fillText("Milliy Sertifikat (MOC) sinov imtihonida yuqori bilim va salohiyat", W / 2, 542);
-                    ctx.fillText("ko'rsatgani uchun taqdirlanadi.", W / 2, 578);
+                    ctx.fillText(`${examLabel} sinov imtihonida`, W / 2, 540);
+                    ctx.fillText("yuqori bilim va salohiyat ko'rsatgani uchun taqdirlanadi.", W / 2, 576);
                 }
 
-                // 7. Daraja va Rasch Balli Markaziy Bloki
                 const boxW = 680;
                 const boxH = 175;
                 const boxX = (W - boxW) / 2;
@@ -692,10 +683,8 @@
                 ctx.font = '500 18px Inter, sans-serif';
                 ctx.fillText(`To'g'ri javoblar: ${result.rawScore} / ${result.maxRawScore} birlik`, boxX + 335, boxY + 138);
 
-                // 8. Muhr
                 this.drawGoldSeal(ctx, W / 2, 935, isPart ? "MOC" : result.grade.level, isPart);
 
-                // 9. Pastki Chap
                 ctx.textAlign = 'left';
                 ctx.fillStyle = '#475569';
                 ctx.font = '600 19px Inter, sans-serif';
@@ -704,7 +693,6 @@
                 ctx.font = '700 19px monospace';
                 ctx.fillText(`Sertifikat ID: ${result.certId}`, 130, 952);
 
-                // 10. Pastki O'ng
                 ctx.textAlign = 'right';
                 ctx.fillStyle = '#475569';
                 ctx.font = '600 19px Inter, sans-serif';
@@ -807,6 +795,7 @@
 
                 const text = [
                     `${statusEmoji} <b>YANGI MOC IMTIHON NATIJASI</b>`,
+                    `📚 <b>Test:</b> ${this.escapeHtml(result.examTitle || "MOC Test")}`,
                     `🏫 <i>23-maktab • Ustoz Islom platformasi</i>`,
                     ``,
                     `👤 <b>O'quvchi:</b> ${this.escapeHtml(result.studentName)}`,
@@ -849,15 +838,15 @@
 
         /**
          * ============================================================================
-         * 6. ASOSIY ILOVA BOSHQARUVCHISI
+         * 6. ASOSIY ILOVA BOSHQARUVCHISI (KO'P TESTLI BAZA BILAN)
          * ============================================================================
          */
         const app = {
             state: {
                 view: 'home',
                 teacherAuthenticated: false,
+                selectedTestId: null,
                 questions: [],
-                dataSourceLabel: 'Ichki tayyor baza (45 savol)',
                 isLoadingQuestions: false,
                 currentExamQuestion: 1,
                 currentResult: null,
@@ -873,13 +862,35 @@
                         const jsonStr = decodeURIComponent(escape(atob(encoded)));
                         const shared = JSON.parse(jsonStr);
                         const current = this.getConfig();
+
+                        let mergedTests = [...(current.tests || [])];
+                        if (Array.isArray(shared.tests) && shared.tests.length > 0) {
+                            shared.tests.forEach(st => {
+                                const idx = mergedTests.findIndex(t => t.id === st.id);
+                                if (idx >= 0) mergedTests[idx] = { ...mergedTests[idx], ...st };
+                                else mergedTests.push(st);
+                            });
+                        } else if (shared.s) {
+                            // Eski formatdagi ssilka bilan moslik
+                            const legacyId = "shared_test_1";
+                            const legacyObj = {
+                                id: legacyId,
+                                title: shared.title || "Milliy Sertifikat (MOC) sinov imtihoni",
+                                subtitle: "45 ta savol • Onlayn imtihon",
+                                durationMinutes: shared.d || 150,
+                                csvUrl: shared.s,
+                                imageFolder: ""
+                            };
+                            const idx = mergedTests.findIndex(t => t.id === legacyId);
+                            if (idx >= 0) mergedTests[idx] = legacyObj;
+                            else mergedTests.unshift(legacyObj);
+                        }
+
                         const merged = {
                             ...current,
-                            googleSheetCsvUrl: shared.s || current.googleSheetCsvUrl,
                             telegramBotToken: shared.t || current.telegramBotToken,
                             telegramChatId: shared.c || current.telegramChatId,
-                            durationMinutes: shared.d || current.durationMinutes,
-                            examTitle: shared.title || current.examTitle
+                            tests: mergedTests
                         };
                         this.saveConfig(merged);
                     }
@@ -891,14 +902,28 @@
             getConfig() {
                 try {
                     const saved = localStorage.getItem(STORAGE_KEYS.CONFIG);
-                    return saved ? { ...DEFAULT_CONFIG, ...JSON.parse(saved) } : { ...DEFAULT_CONFIG };
+                    const parsed = saved ? JSON.parse(saved) : {};
+                    const tests = (Array.isArray(parsed.tests) && parsed.tests.length > 0)
+                        ? parsed.tests
+                        : [...BUILTIN_TESTS];
+                    return {
+                        ...DEFAULT_CONFIG,
+                        ...parsed,
+                        tests
+                    };
                 } catch (e) {
-                    return { ...DEFAULT_CONFIG };
+                    return { ...DEFAULT_CONFIG, tests: [...BUILTIN_TESTS] };
                 }
             },
 
             saveConfig(cfg) {
                 localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(cfg));
+            },
+
+            getSelectedTest() {
+                const cfg = this.getConfig();
+                if (!cfg.tests || cfg.tests.length === 0) return null;
+                return cfg.tests.find(t => t.id === this.state.selectedTestId) || cfg.tests[0];
             },
 
             getActiveSession() {
@@ -998,10 +1023,15 @@
 
             async init() {
                 this.applyUrlConfigIfPresent();
-                await this.loadQuestions(false);
+                const cfg = this.getConfig();
+                if (cfg.tests.length > 0) {
+                    this.state.selectedTestId = cfg.tests[0].id;
+                }
 
                 const active = this.getActiveSession();
                 if (active) {
+                    if (active.testId) this.state.selectedTestId = active.testId;
+                    await this.loadQuestionsForTest(this.getSelectedTest(), false);
                     if (active.endTime <= Date.now()) {
                         await this.finishExam(true);
                         return;
@@ -1012,41 +1042,53 @@
                 this.render();
             },
 
-            async loadQuestions(notify = false) {
-                const cfg = this.getConfig();
-                if (cfg.googleSheetCsvUrl && cfg.googleSheetCsvUrl.trim() !== '') {
+            selectTestCard(testId) {
+                this.state.selectedTestId = testId;
+                this.render();
+            },
+
+            async loadQuestionsForTest(testObj, notify = false) {
+                if (!testObj) {
+                    this.state.questions = getFallbackQuestions();
+                    return;
+                }
+
+                if (testObj.csvUrl && testObj.csvUrl.trim() !== '') {
                     this.state.isLoadingQuestions = true;
-                    if (this.state.view === 'home') this.render();
+                    this.render();
 
                     try {
-                        const { questions, customDuration, customTitle } = await GoogleSheetsLoader.fetchFromUrl(cfg.googleSheetCsvUrl);
+                        const { questions, customDuration, customTitle } = await GoogleSheetsLoader.fetchFromUrl(
+                            testObj.csvUrl,
+                            testObj.imageFolder || ''
+                        );
                         this.state.questions = questions;
-                        this.state.dataSourceLabel = `Google Sheets (Onlayn • ${questions.length} savol)`;
-                        localStorage.setItem(STORAGE_KEYS.QUESTIONS_CACHE, JSON.stringify(questions));
+                        localStorage.setItem(STORAGE_KEYS.QUESTIONS_CACHE_PREFIX + testObj.id, JSON.stringify(questions));
 
-                        if (customDuration || customTitle) {
-                            if (customDuration) cfg.durationMinutes = customDuration;
-                            if (customTitle) cfg.examTitle = customTitle;
-                            this.saveConfig(cfg);
+                        // Agar jadvalning ichida maxsus vaqt yozilgan bo'lsa yangilaymiz
+                        if (customDuration) {
+                            const cfg = this.getConfig();
+                            const idx = cfg.tests.findIndex(t => t.id === testObj.id);
+                            if (idx >= 0) {
+                                cfg.tests[idx].durationMinutes = customDuration;
+                                this.saveConfig(cfg);
+                            }
                         }
-                        if (notify) this.toast("Google Sheets jadvalidan savollar muvaffaqiyatli yuklandi!", "success");
+                        if (notify) this.toast(`«${testObj.title}» savollari yuklandi!`, "success");
                     } catch (err) {
                         console.warn("Google Sheets yuklashda xatolik:", err);
-                        const cached = localStorage.getItem(STORAGE_KEYS.QUESTIONS_CACHE);
+                        const cached = localStorage.getItem(STORAGE_KEYS.QUESTIONS_CACHE_PREFIX + testObj.id);
                         if (cached) {
                             this.state.questions = JSON.parse(cached);
-                            this.state.dataSourceLabel = "Keshlangan Google Sheets bazasi";
                         } else {
                             this.state.questions = getFallbackQuestions();
-                            this.state.dataSourceLabel = "Ichki zaxira baza (45 savol)";
                         }
-                        if (notify) this.toast(`Google Sheets xatosi: ${err.message}`, "error");
+                        if (notify) this.toast(`Yuklash xatosi: ${err.message}`, "error");
                     } finally {
                         this.state.isLoadingQuestions = false;
                     }
                 } else {
                     this.state.questions = getFallbackQuestions();
-                    this.state.dataSourceLabel = "Tayyor namunaviy baza (45 savol)";
                 }
             },
 
@@ -1078,7 +1120,6 @@
                         break;
                     case 'result':
                         main.innerHTML = this.renderResultView();
-                        // Shriftlar va DOM to'liq tayyor bo'lgandan keyin sertifikatni chizish
                         setTimeout(() => this.drawCertificateIfEligible(), 80);
                         break;
                     case 'teacher_auth':
@@ -1093,17 +1134,18 @@
 
             /**
              * ====================================================================
-             * A) BOSH SAHIFA
+             * A) BOSH SAHIFA — TESTLAR BAZASI VA TANLASH OYNASI
              * ====================================================================
              */
             renderHomeView() {
                 const cfg = this.getConfig();
-                const qCount = this.state.questions.length || 45;
-                const closedCount = this.state.questions.filter(q => q.type === 'closed').length;
-                const openCount = this.state.questions.filter(q => q.type === 'open').length;
+                const tests = cfg.tests || [];
+                const selectedTest = this.getSelectedTest();
+                const subs = this.getSubmissions();
 
                 return `
                 <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start fade-in">
+                    <!-- Chap ustun: Testlar bazasi ro'yxati -->
                     <div class="lg:col-span-7 space-y-6">
                         <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm">
                             <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
@@ -1111,42 +1153,68 @@
                                     <i class="fa-solid fa-school"></i>
                                     <span>23-maktab • Sayxunobod tumani, Sirdaryo</span>
                                 </span>
-                                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">
-                                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                                    <span>${this.escapeHtml(this.state.dataSourceLabel)}</span>
+                                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold">
+                                    <i class="fa-solid fa-database"></i>
+                                    <span>Bazadagi testlar: ${tests.length} ta</span>
                                 </span>
                             </div>
 
-                            <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 leading-tight mb-3">
-                                ${this.escapeHtml(cfg.examTitle)}
+                            <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 leading-tight mb-2">
+                                Milliy Sertifikat (MOC) Testlar Bazasi
                             </h1>
-                            <p class="text-slate-600 text-sm sm:text-base leading-relaxed mb-6">
-                                Hurmatli o'quvchi! Imtihonni yakunlaganingizdan so'ng natijangiz <strong>Rasch (Rash) modeli</strong> asosida hisoblanadi va sizga shaxsiy <strong>Sertifikat</strong> taqdim etiladi!
+                            <p class="text-slate-600 text-sm leading-relaxed mb-6">
+                                Quyidagi ro'yxatdan o'zingiz ishlamoqchi bo'lgan test variantini tanlang. Har bir test yakunida <strong>Rasch (Rash) modeli</strong> bo'yicha ballingiz va shaxsiy <strong>Sertifikat</strong> taqdim etiladi.
                             </p>
 
-                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                                <div class="bg-slate-50 rounded-2xl p-3.5 border border-slate-100">
-                                    <div class="text-xs text-slate-500 font-medium mb-1">Jami savollar</div>
-                                    <div class="text-xl font-extrabold text-slate-900">${qCount} ta</div>
-                                    <div class="text-[11px] text-slate-400">${closedCount + openCount * 2} baholash birligi</div>
-                                </div>
-                                <div class="bg-slate-50 rounded-2xl p-3.5 border border-slate-100">
-                                    <div class="text-xs text-slate-500 font-medium mb-1">Ajratilgan vaqt</div>
-                                    <div class="text-xl font-extrabold text-blue-600">${cfg.durationMinutes} daq</div>
-                                    <div class="text-[11px] text-slate-400">Avtomatik taymer</div>
-                                </div>
-                                <div class="bg-slate-50 rounded-2xl p-3.5 border border-slate-100">
-                                    <div class="text-xs text-slate-500 font-medium mb-1">1–35 savollar</div>
-                                    <div class="text-xl font-extrabold text-slate-900">Yopiq test</div>
-                                    <div class="text-[11px] text-slate-400">A, B, C, D variantli</div>
-                                </div>
-                                <div class="bg-slate-50 rounded-2xl p-3.5 border border-slate-100">
-                                    <div class="text-xs text-slate-500 font-medium mb-1">36–45 savollar</div>
-                                    <div class="text-xl font-extrabold text-indigo-600">Yozma</div>
-                                    <div class="text-[11px] text-slate-400">a) va b) shartli</div>
-                                </div>
+                            <!-- Testlar ro'yxati (Katalog) -->
+                            <div class="space-y-3 mb-6">
+                                ${tests.map((t, index) => {
+                                    const isSelected = selectedTest && selectedTest.id === t.id;
+                                    const completedCount = subs.filter(s => s.testId === t.id).length;
+                                    const isLive = Boolean(t.csvUrl && t.csvUrl.trim());
+                                    return `
+                                    <div onclick="app.selectTestCard('${t.id}')"
+                                        class="cursor-pointer rounded-2xl p-4 sm:p-5 border-2 transition flex items-start justify-between gap-4 ${
+                                            isSelected
+                                            ? 'border-blue-700 bg-blue-50/60 shadow-sm'
+                                            : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50'
+                                        }">
+                                        <div class="flex items-start gap-3.5">
+                                            <div class="w-10 h-10 rounded-xl flex items-center justify-center font-extrabold text-sm shrink-0 mt-0.5 ${
+                                                isSelected ? 'bg-blue-700 text-white shadow' : 'bg-slate-100 text-slate-700'
+                                            }">
+                                                ${index + 1}
+                                            </div>
+                                            <div>
+                                                <div class="flex flex-wrap items-center gap-2">
+                                                    <h3 class="font-bold text-slate-900 text-base">${this.escapeHtml(t.title)}</h3>
+                                                    ${isLive
+                                                        ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">Onlayn baza</span>`
+                                                        : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">Namuna test</span>`
+                                                    }
+                                                </div>
+                                                <p class="text-xs text-slate-500 mt-1">${this.escapeHtml(t.subtitle || '45 ta savol • 1–35 yopiq, 36–45 yozma')}</p>
+                                                <div class="flex flex-wrap items-center gap-3 mt-2.5 text-xs font-medium text-slate-600">
+                                                    <span class="flex items-center gap-1"><i class="fa-regular fa-clock text-blue-600"></i> ${t.durationMinutes || 150} daqiqa</span>
+                                                    <span class="flex items-center gap-1"><i class="fa-solid fa-list-check text-indigo-600"></i> 45 savol (55 birlik)</span>
+                                                    ${completedCount > 0 ? `<span class="text-emerald-700 font-semibold"><i class="fa-solid fa-circle-check"></i> ${completedCount} marta ishlangan</span>` : ''}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="shrink-0 self-center">
+                                            <span class="w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                                                isSelected ? 'border-blue-700 bg-blue-700 text-white' : 'border-slate-300'
+                                            }">
+                                                ${isSelected ? '<i class="fa-solid fa-check text-xs"></i>' : ''}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    `;
+                                }).join('')}
                             </div>
 
+                            <!-- Sertifikat darajalari jadvali -->
                             <div class="bg-gradient-to-r from-slate-900 to-blue-950 rounded-2xl p-4 sm:p-5 text-white">
                                 <div class="flex items-center justify-between mb-3">
                                     <span class="text-xs font-bold uppercase tracking-wider text-amber-300">
@@ -1183,10 +1251,21 @@
                         </div>
                     </div>
 
+                    <!-- O'ng ustun: Tanlangan testni boshlash formasi -->
                     <div class="lg:col-span-5">
-                        <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-lg">
-                            <h2 class="text-xl font-bold text-slate-900 mb-1">Imtihonni boshlash</h2>
-                            <p class="text-sm text-slate-500 mb-6">Sertifikatga yoziladigan ism-familiyangizni to'g'ri kiriting.</p>
+                        <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-lg sticky top-24">
+                            <div class="bg-blue-50 border border-blue-100 rounded-2xl p-3.5 mb-5">
+                                <div class="text-[11px] font-bold uppercase tracking-wider text-blue-600 mb-0.5">Tanlangan imtihon:</div>
+                                <div class="font-extrabold text-slate-900 text-sm sm:text-base">
+                                    ${selectedTest ? this.escapeHtml(selectedTest.title) : "Test tanlanmagan"}
+                                </div>
+                                <div class="text-xs text-slate-500 mt-1">
+                                    Vaqt: <strong>${selectedTest?.durationMinutes || 150} daqiqa</strong> • 45 ta savol
+                                </div>
+                            </div>
+
+                            <h2 class="text-xl font-bold text-slate-900 mb-1">Ma'lumotlaringizni kiriting</h2>
+                            <p class="text-sm text-slate-500 mb-5">Sertifikatga yoziladigan ism-familiyangizni to'g'ri yozing.</p>
 
                             <form onsubmit="app.startExam(event)" class="space-y-4">
                                 <div>
@@ -1201,21 +1280,18 @@
                                         class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 outline-none transition text-sm font-medium">
                                 </div>
 
-                                <button type="submit" ${this.state.isLoadingQuestions ? 'disabled' : ''}
+                                <button type="submit" ${this.state.isLoadingQuestions || !selectedTest ? 'disabled' : ''}
                                     class="w-full py-3.5 px-6 rounded-xl font-bold text-white bg-blue-700 hover:bg-blue-800 disabled:bg-slate-300 transition shadow-md flex items-center justify-center gap-2 text-base mt-2">
                                     ${this.state.isLoadingQuestions
                                         ? `<i class="fa-solid fa-spinner fa-spin"></i><span>Savollar yuklanmoqda...</span>`
-                                        : `<span>Testni boshlash</span><i class="fa-solid fa-arrow-right"></i>`
+                                        : `<span>Tanlangan testni boshlash</span><i class="fa-solid fa-arrow-right"></i>`
                                     }
                                 </button>
                             </form>
 
                             <div class="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                                 <span>Ustoz Islom nazorati ostida</span>
-                                <button onclick="app.refreshQuestionsFromSheet()" class="text-blue-600 hover:underline font-semibold flex items-center gap-1">
-                                    <i class="fa-solid fa-rotate"></i>
-                                    <span>Savollarni yangilash</span>
-                                </button>
+                                <span class="text-slate-400 font-medium">23-maktab</span>
                             </div>
                         </div>
                     </div>
@@ -1223,28 +1299,28 @@
                 `;
             },
 
-            async refreshQuestionsFromSheet() {
-                await this.loadQuestions(true);
-                this.render();
-            },
-
             /**
              * ====================================================================
-             * B) IMTIHON JARAYONI (CHIZMALARNI KO'RSATISH BILAN)
+             * B) IMTIHON JARAYONI
              * ====================================================================
              */
-            startExam(e) {
+            async startExam(e) {
                 e.preventDefault();
                 const name = document.getElementById('student-name').value.trim();
                 const group = document.getElementById('student-group').value.trim();
-                if (!name || !group) return;
+                const selectedTest = this.getSelectedTest();
+                if (!name || !group || !selectedTest) return;
 
-                const cfg = this.getConfig();
+                await this.loadQuestionsForTest(selectedTest, false);
+
+                const duration = selectedTest.durationMinutes || 150;
                 const session = {
+                    testId: selectedTest.id,
+                    examTitle: selectedTest.title,
                     studentName: name,
                     studentGroup: group,
                     startTime: Date.now(),
-                    endTime: Date.now() + cfg.durationMinutes * 60 * 1000,
+                    endTime: Date.now() + duration * 60 * 1000,
                     answers: {}
                 };
 
@@ -1252,7 +1328,7 @@
                 this.state.currentExamQuestion = this.state.questions[0]?.id || 1;
                 this.state.view = 'exam';
                 this.render();
-                this.toast("Imtihon boshlandi! Omad tilaymiz!", "info");
+                this.toast(`«${selectedTest.title}» boshlandi! Omad!`, "info");
             },
 
             renderExamView() {
@@ -1275,15 +1351,14 @@
 
                 return `
                 <div class="space-y-5 fade-in">
-                    <!-- Yuqori Axborot va Taymer Paneli -->
                     <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
                                 <i class="fa-solid fa-user-graduate"></i>
                             </div>
                             <div>
-                                <div class="font-bold text-slate-900 text-sm sm:text-base">${this.escapeHtml(session.studentName)}</div>
-                                <div class="text-xs text-slate-500">${this.escapeHtml(session.studentGroup)} • Bajarildi: <strong class="text-slate-700">${answeredCount}/${questions.length}</strong></div>
+                                <div class="font-bold text-slate-900 text-sm sm:text-base">${this.escapeHtml(session.studentName)} <span class="text-xs font-normal text-slate-500">(${this.escapeHtml(session.studentGroup)})</span></div>
+                                <div class="text-xs text-blue-700 font-semibold">${this.escapeHtml(session.examTitle || '')} • <span class="text-slate-500 font-normal">Bajarildi: <strong class="text-slate-700">${answeredCount}/${questions.length}</strong></span></div>
                             </div>
                         </div>
 
@@ -1301,7 +1376,6 @@
                     </div>
 
                     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                        <!-- Savol oynasi -->
                         <div class="lg:col-span-8 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm">
                             <div class="flex items-center justify-between pb-4 mb-6 border-b border-slate-100">
                                 <div class="flex items-center gap-2.5">
@@ -1316,18 +1390,16 @@
                                 <span class="text-xs text-slate-400 font-medium">${q.id} / ${questions.length}</span>
                             </div>
 
-                            <!-- Savol matni -->
                             <div class="text-base sm:text-lg text-slate-900 font-medium leading-relaxed mb-5 whitespace-pre-line">
                                 ${this.escapeHtml(q.text)}
                             </div>
 
-                            <!-- AGAR SAVOLDA CHIZMA / RASM BO'LSA SHU YERDA CHIQADI -->
                             ${q.imageUrl ? `
                                 <div class="mb-6 bg-slate-50 border border-slate-200 rounded-2xl p-3 flex flex-col items-center">
                                     <img src="${this.escapeHtml(q.imageUrl)}"
                                          alt="${q.id}-savol chizmasi"
                                          onclick="app.zoomImage(this.src)"
-                                         onerror="this.parentElement.innerHTML='<span class=\\'text-xs text-rose-500\\'><i class=\\'fa-solid fa-image-slash mr-1\\'></i>Chizma yuklanmadi (havolani tekshiring)</span>'"
+                                         onerror="this.parentElement.innerHTML='<span class=\\'text-xs text-rose-500\\'><i class=\\'fa-solid fa-image-slash mr-1\\'></i>Chizma yuklanmadi (${this.escapeHtml(q.imageUrl)})</span>'"
                                          class="max-h-72 w-auto object-contain rounded-xl cursor-zoom-in transition hover:scale-[1.01]">
                                     <span class="text-[11px] text-slate-400 mt-2"><i class="fa-solid fa-magnifying-glass-plus mr-1"></i>Kattalashtirish uchun chizma ustiga bosing</span>
                                 </div>
@@ -1412,7 +1484,6 @@
                             </div>
                         </div>
 
-                        <!-- Savollar Navigatsiya Xaritasi -->
                         <div class="lg:col-span-4 bg-white rounded-3xl p-5 border border-slate-200 shadow-sm">
                             <div class="flex items-center justify-between mb-3">
                                 <h3 class="font-bold text-slate-900 text-sm">Savollar xaritasi</h3>
@@ -1559,6 +1630,8 @@
 
                 const evaluated = RaschEngine.evaluateSingle(this.state.questions, {
                     id: 'sub_' + Date.now(),
+                    testId: session.testId,
+                    examTitle: session.examTitle,
                     certId,
                     studentName: session.studentName,
                     studentGroup: session.studentGroup,
@@ -1611,11 +1684,10 @@
 
                 return `
                 <div class="space-y-6 fade-in">
-                    <!-- Asosiy Natija Kartochkasi -->
                     <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm">
                         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-100">
                             <div>
-                                <div class="text-xs font-bold text-blue-700 uppercase tracking-wider mb-1">Imtihon Yakuniy Natijasi</div>
+                                <div class="text-xs font-bold text-blue-700 uppercase tracking-wider mb-1">${this.escapeHtml(r.examTitle || 'Imtihon Yakuniy Natijasi')}</div>
                                 <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900">${this.escapeHtml(r.studentName)}</h1>
                                 <div class="flex flex-wrap items-center gap-2 mt-1.5">
                                     <span class="text-sm text-slate-500">${this.escapeHtml(r.studentGroup)} • ${r.formattedDateTime}</span>
@@ -1625,12 +1697,11 @@
                                 </div>
                             </div>
                             <button onclick="app.goHome()" class="self-start px-4 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 transition flex items-center gap-2">
-                                <i class="fa-solid fa-rotate-right"></i>
-                                <span>Qayta topshirish</span>
+                                <i class="fa-solid fa-layer-group"></i>
+                                <span>Boshqa test tanlash</span>
                             </button>
                         </div>
 
-                        <!-- 4 ta Asosiy Ko'rsatkich -->
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
                             <div class="bg-gradient-to-br from-blue-700 to-indigo-800 rounded-2xl p-5 text-white shadow-md">
                                 <div class="text-xs font-medium text-blue-100 mb-1">Rasch (Rash) Balli</div>
@@ -1660,7 +1731,6 @@
                         </div>
                     </div>
 
-                    <!-- SERTIFIKAT OYNASI (HAR DOIM KO'RINADI VA YUKLAB OLINADI) -->
                     <div class="bg-gradient-to-b ${isPart ? 'from-blue-50/80 to-white border-blue-200' : 'from-amber-50/80 to-white border-amber-200'} rounded-3xl p-6 sm:p-8 border-2 shadow-md space-y-5">
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div class="flex items-center gap-3">
@@ -1689,7 +1759,6 @@
                         </div>
                     </div>
 
-                    <!-- Savollar Bo'yicha Batafsil Tahlil -->
                     <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm">
                         <h2 class="text-lg font-bold text-slate-900 mb-4">Topshiriqlar tahlili (${r.maxRawScore} ta birlik)</h2>
                         <div class="overflow-x-auto">
@@ -1755,7 +1824,7 @@
 
             /**
              * ====================================================================
-             * D) O'QITUVCHI SOZLAMALAR PANELI
+             * D) O'QITUVCHI SOZLAMALAR PANELI (TESTLAR BAZASINI BOSHQARISH)
              * ====================================================================
              */
             renderTeacherAuthView() {
@@ -1766,7 +1835,7 @@
                     </div>
                     <h2 class="text-xl font-extrabold text-center text-slate-900 mb-1">Ustoz Islom — Sozlamalar</h2>
                     <p class="text-xs text-center text-slate-500 mb-6">
-                        Google Sheets va Telegram botni ulash uchun PIN-kodni kiriting (standart: <code>1234</code>).
+                        Testlar bazasi va Telegram botni boshqarish uchun PIN-kodni kiriting (standart: <code>1234</code>).
                     </p>
 
                     <form onsubmit="app.verifyTeacherPin(event)" class="space-y-4">
@@ -1795,104 +1864,151 @@
 
             renderTeacherView() {
                 const cfg = this.getConfig();
-                const subs = this.getSubmissions();
+                const tests = cfg.tests || [];
 
                 return `
                 <div class="space-y-6 fade-in">
-                    <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm">
+                    <!-- 1. TESTLAR BAZASINI BOSHQARISH -->
+                    <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
                             <div>
-                                <h1 class="text-xl sm:text-2xl font-extrabold text-slate-900">Google Sheets va Telegram Integratsiyasi</h1>
-                                <p class="text-xs sm:text-sm text-slate-500 mt-0.5">23-maktab • Ustoz Islom uchun boshqaruv markazi</p>
+                                <h1 class="text-xl sm:text-2xl font-extrabold text-slate-900">Testlar Bazasi (Katalog) Boshqaruvi</h1>
+                                <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Har bir test uchun alohida Google Sheets CSV havolasi va rasmlar papkasini qo'shing</p>
                             </div>
                             <button onclick="app.downloadSampleCSV()"
                                 class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold transition shadow-sm flex items-center gap-2 self-start">
                                 <i class="fa-solid fa-file-csv"></i>
-                                <span>Namuna Google Sheets jadvalini yuklash (.csv)</span>
+                                <span>Namuna CSV yuklash</span>
                             </button>
                         </div>
 
-                        <form onsubmit="app.saveTeacherConfig(event)" class="space-y-6 mt-6">
-                            <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3">
-                                <div class="flex items-center justify-between">
-                                    <label class="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                                        <i class="fa-solid fa-table text-emerald-600"></i>
-                                        <span>1. Google Sheets (CSV) havolasi</span>
-                                    </label>
-                                    <span class="text-[11px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">Chizmalar (L ustun) qo'llab-quvvatlanadi</span>
-                                </div>
-                                <input type="url" id="cfg-sheet-url" value="${this.escapeHtml(cfg.googleSheetCsvUrl)}"
-                                    placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv"
-                                    class="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white focus:border-blue-600 outline-none text-sm font-mono">
-                                <p class="text-xs text-slate-500 leading-relaxed">
-                                    <strong>Chizma qo'shish uchun:</strong> Google Sheets jadvalining <strong>L ustuniga</strong> (12-ustun) rasm havolasini (Google Drive yoki GitHub rasm linkini) yozing.
-                                </p>
-                            </div>
-
-                            <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-4">
-                                <div class="flex items-center justify-between">
-                                    <label class="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                                        <i class="fa-brands fa-telegram text-sky-500 text-lg"></i>
-                                        <span>2. Telegram Bot (Natijalarni qabul qilish)</span>
-                                    </label>
-                                    <button type="button" onclick="app.sendTestTelegram()"
-                                        class="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold transition">
-                                        Test xabar yuborish
-                                    </button>
-                                </div>
-
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="block text-xs font-bold text-slate-700 mb-1">Bot Token (@BotFather dan)</label>
-                                        <input type="text" id="cfg-tg-token" value="${this.escapeHtml(cfg.telegramBotToken)}"
-                                            placeholder="7123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
-                                            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-mono outline-none">
+                        <!-- Mavjud testlar ro'yxati -->
+                        <div class="space-y-3">
+                            <h3 class="text-sm font-extrabold text-slate-800">Bazadagi joriy testlar (${tests.length} ta):</h3>
+                            ${tests.map((t, idx) => `
+                                <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div class="space-y-1">
+                                        <div class="font-bold text-slate-900 text-sm">${idx + 1}. ${this.escapeHtml(t.title)}</div>
+                                        <div class="text-xs text-slate-500">
+                                            Vaqt: <strong>${t.durationMinutes} daq</strong> •
+                                            Rasmlar papkasi: <code class="bg-white px-1.5 py-0.5 rounded border">${this.escapeHtml(t.imageFolder || '/ (asosiy papka)')}</code>
+                                        </div>
+                                        <div class="text-[11px] font-mono text-blue-700 break-all">
+                                            ${t.csvUrl ? this.escapeHtml(t.csvUrl) : '<span class="text-amber-600">CSV havola ulanmagan (Namuna savollar ishlaydi)</span>'}
+                                        </div>
                                     </div>
-                                    <div>
-                                        <label class="block text-xs font-bold text-slate-700 mb-1">Sizning Chat ID (@userinfobot dan)</label>
-                                        <input type="text" id="cfg-tg-chat" value="${this.escapeHtml(cfg.telegramChatId)}"
-                                            placeholder="123456789"
-                                            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-mono outline-none">
+                                    <div class="flex items-center gap-2 shrink-0">
+                                        <button type="button" onclick="app.testLoadSingle('${t.id}')"
+                                            class="px-3 py-1.5 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-800 text-xs font-bold transition">
+                                            Tekshirish
+                                        </button>
+                                        ${tests.length > 1 ? `
+                                            <button type="button" onclick="app.deleteTestItem('${t.id}')"
+                                                class="px-3 py-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 text-xs font-bold transition">
+                                                O'chirish
+                                            </button>
+                                        ` : ''}
                                     </div>
+                                </div>
+                            `).join('')}
+                        </div>
+
+                        <!-- Yangi test qo'shish formasi -->
+                        <form onsubmit="app.addNewTestItem(event)" class="bg-blue-50/70 p-5 rounded-2xl border border-blue-200 space-y-4">
+                            <h3 class="text-sm font-extrabold text-blue-950 flex items-center gap-2">
+                                <i class="fa-solid fa-plus-circle text-blue-700"></i>
+                                <span>Bazaga yangi test qo'shish</span>
+                            </h3>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Test nomi (o'quvchiga ko'rinadi)</label>
+                                    <input type="text" id="new-test-title" required placeholder="Masalan: 04.10.2026 (2-smena) — 2-variant"
+                                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Qisqa izoh</label>
+                                    <input type="text" id="new-test-subtitle" placeholder="Masalan: 45 ta savol • Milliy sertifikat"
+                                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm outline-none">
                                 </div>
                             </div>
 
                             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                <div class="sm:col-span-1">
-                                    <label class="block text-xs font-bold text-slate-700 mb-1">Imtihon vaqti (daqiqa)</label>
-                                    <input type="number" id="cfg-duration" min="5" max="300" value="${cfg.durationMinutes}"
-                                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-bold outline-none">
+                                <div class="sm:col-span-2">
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Google Sheets CSV havolasi</label>
+                                    <input type="url" id="new-test-csv" required placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?gid=...&single=true&output=csv"
+                                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-mono outline-none">
                                 </div>
                                 <div class="sm:col-span-1">
-                                    <label class="block text-xs font-bold text-slate-700 mb-1">Yangi PIN-kod</label>
-                                    <input type="text" id="cfg-pin" minlength="4" value="${this.escapeHtml(cfg.teacherPin)}"
-                                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono font-bold outline-none">
-                                </div>
-                                <div class="sm:col-span-1">
-                                    <label class="block text-xs font-bold text-slate-700 mb-1">Imtihon sarlavhasi</label>
-                                    <input type="text" id="cfg-title" value="${this.escapeHtml(cfg.examTitle)}"
-                                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm outline-none">
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Rasmlar papkasi (ixtiyoriy)</label>
+                                    <input type="text" id="new-test-folder" placeholder="Masalan: test2/ yoki bo'sh"
+                                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-mono outline-none">
                                 </div>
                             </div>
 
-                            <div class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100">
-                                <button type="submit" class="px-6 py-3 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold text-sm transition shadow-md">
-                                    Sozlamalarni saqlash va Savollarni yuklash
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div class="flex items-center gap-2">
+                                    <label class="text-xs font-bold text-slate-700">Vaqt (daqiqa):</label>
+                                    <input type="number" id="new-test-duration" value="150" min="5" max="300"
+                                        class="w-24 px-3 py-2 rounded-xl border border-slate-300 bg-white text-sm font-bold outline-none">
+                                </div>
+                                <button type="submit" class="px-5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs sm:text-sm transition shadow">
+                                    + Testni bazaga qo'shish
                                 </button>
                             </div>
                         </form>
                     </div>
 
-                    <!-- O'QUVCHILARGA ULASHISH HAVOLASI -->
+                    <!-- 2. TELEGRAM VA PIN SOZLAMALARI -->
+                    <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm">
+                        <form onsubmit="app.saveGeneralSettings(event)" class="space-y-5">
+                            <div class="flex items-center justify-between">
+                                <h2 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                                    <i class="fa-brands fa-telegram text-sky-500 text-lg"></i>
+                                    <span>Telegram Bot va Xavfsizlik Sozlamalari</span>
+                                </h2>
+                                <button type="button" onclick="app.sendTestTelegram()"
+                                    class="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold transition">
+                                    Test xabar yuborish
+                                </button>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Bot Token (@BotFather dan)</label>
+                                    <input type="text" id="cfg-tg-token" value="${this.escapeHtml(cfg.telegramBotToken)}"
+                                        placeholder="7123456789:AAHdq..."
+                                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-mono outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Sizning Chat ID</label>
+                                    <input type="text" id="cfg-tg-chat" value="${this.escapeHtml(cfg.telegramChatId)}"
+                                        placeholder="123456789"
+                                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-mono outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1">Yangi PIN-kod</label>
+                                    <input type="text" id="cfg-pin" minlength="4" value="${this.escapeHtml(cfg.teacherPin)}"
+                                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-mono font-bold outline-none">
+                                </div>
+                            </div>
+
+                            <button type="submit" class="px-6 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm transition shadow-sm">
+                                Sozlamalarni saqlash
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- 3. O'QUVCHILARGA ULASHISH HAVOLASI -->
                     <div class="bg-gradient-to-r from-indigo-900 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-lg space-y-4">
                         <div class="flex items-start gap-3">
                             <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-amber-300 shrink-0">
                                 <i class="fa-solid fa-link"></i>
                             </div>
                             <div>
-                                <h2 class="text-lg font-extrabold">O'quvchilarga yuborish uchun Tayyor Havola (Ssilka)</h2>
+                                <h2 class="text-lg font-extrabold">Barcha Testlar Bazasi Ulangan Tayyor Havola (Ssilka)</h2>
                                 <p class="text-xs text-slate-300 mt-0.5 leading-relaxed">
-                                    Sozlamalarni saqlaganingizdan so'ng quyidagi havolani nusxalab o'quvchilarga yuboring.
+                                    Yangi test qo'shganingizdan so'ng ushbu havolani nusxalab Telegram guruhingizga tashlang — o'quvchilarda barcha testlar ro'yxati ochiladi.
                                 </p>
                             </div>
                         </div>
@@ -1910,18 +2026,67 @@
                 `;
             },
 
-            async saveTeacherConfig(e) {
+            async addNewTestItem(e) {
+                e.preventDefault();
+                const title = document.getElementById('new-test-title').value.trim();
+                const subtitle = document.getElementById('new-test-subtitle').value.trim() || "45 ta savol • Milliy Sertifikat (MOC)";
+                const csvUrl = document.getElementById('new-test-csv').value.trim();
+                const imageFolder = document.getElementById('new-test-folder').value.trim();
+                const durationMinutes = parseInt(document.getElementById('new-test-duration').value, 10) || 150;
+
+                if (!title || !csvUrl) return;
+
+                const cfg = this.getConfig();
+                // Agar faqat boshlang'ich demo test turgan bo'lsa va hali CSV ulanmagan bo'lsa, o'rnini almashtirishimiz yoki yoniga qo'shishimiz mumkin
+                const newTest = {
+                    id: 'test_' + Date.now(),
+                    title,
+                    subtitle,
+                    durationMinutes,
+                    csvUrl,
+                    imageFolder
+                };
+
+                cfg.tests.push(newTest);
+                this.saveConfig(cfg);
+                this.state.selectedTestId = newTest.id;
+                this.toast(`«${title}» testlar bazasiga qo'shildi!`, "success");
+                this.render();
+            },
+
+            deleteTestItem(testId) {
+                this.confirm(
+                    "Testni o'chirish",
+                    "Ushbu testni ro'yxatdan o'chirmoqchimisiz? (Google Sheets jadvalingiz o'chmaydi, faqat sayt ro'yxatidan olinadi)",
+                    () => {
+                        const cfg = this.getConfig();
+                        cfg.tests = cfg.tests.filter(t => t.id !== testId);
+                        this.saveConfig(cfg);
+                        if (this.state.selectedTestId === testId) {
+                            this.state.selectedTestId = cfg.tests[0]?.id || null;
+                        }
+                        this.toast("Test ro'yxatdan o'chirildi.", "info");
+                        this.render();
+                    }
+                );
+            },
+
+            async testLoadSingle(testId) {
+                const cfg = this.getConfig();
+                const target = cfg.tests.find(t => t.id === testId);
+                if (!target) return;
+                await this.loadQuestionsForTest(target, true);
+                this.render();
+            },
+
+            saveGeneralSettings(e) {
                 e.preventDefault();
                 const cfg = this.getConfig();
-                cfg.googleSheetCsvUrl = document.getElementById('cfg-sheet-url').value.trim();
                 cfg.telegramBotToken = document.getElementById('cfg-tg-token').value.trim();
                 cfg.telegramChatId = document.getElementById('cfg-tg-chat').value.trim();
-                cfg.durationMinutes = parseInt(document.getElementById('cfg-duration').value, 10) || 150;
                 cfg.teacherPin = document.getElementById('cfg-pin').value.trim() || "1234";
-                cfg.examTitle = document.getElementById('cfg-title').value.trim() || DEFAULT_CONFIG.examTitle;
-
                 this.saveConfig(cfg);
-                await this.loadQuestions(true);
+                this.toast("Sozlamalar saqlandi!", "success");
                 this.render();
             },
 
@@ -1937,6 +2102,7 @@
                 const res = await TelegramNotifier.sendResult(
                     { telegramBotToken: token, telegramChatId: chatId },
                     {
+                        examTitle: "04.10.2026 (2-smena) — Sinov",
                         studentName: "Test O'quvchi (Sinov)",
                         studentGroup: "11-A sinf",
                         formattedDateTime: new Date().toLocaleString('uz-UZ'),
@@ -1962,11 +2128,9 @@
             generateShareableLink() {
                 const cfg = this.getConfig();
                 const payload = {
-                    s: cfg.googleSheetCsvUrl,
                     t: cfg.telegramBotToken,
                     c: cfg.telegramChatId,
-                    d: cfg.durationMinutes,
-                    title: cfg.examTitle
+                    tests: cfg.tests
                 };
                 const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
                 const baseUrl = window.location.href.split('?')[0];
@@ -1980,7 +2144,7 @@
                 input.setSelectionRange(0, 99999);
                 try {
                     document.execCommand('copy');
-                    this.toast("O'quvchilar uchun havola nusxalandi!", "success");
+                    this.toast("Barcha testlar ulangan havola nusxalandi!", "success");
                 } catch (e) {
                     this.toast("Havolani qo'lda belgilab nusxalang.", "warning");
                 }
